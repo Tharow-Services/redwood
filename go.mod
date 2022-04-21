@@ -28,4 +28,4 @@ require (
 	golang.org/x/xerrors v0.0.0-20220411194840-2f41105eb62f // indirect
 )
 
-go 1.15
+go 1.16

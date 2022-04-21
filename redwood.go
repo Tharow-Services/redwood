@@ -17,7 +17,7 @@ import (
 // Version is the current version number. Fill it in by building with
 //
 // go build -ldflags="-X 'main.Version=$(git describe --tags)'"
-var Version string
+var Version string = "Version 1.1.2-SNAPSHOT"
 
 func main() {
 	if Version != "" {

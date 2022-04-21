@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	_ "embed"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -33,7 +34,43 @@ import (
 
 // loadCertificate loads the TLS certificate specified by certFile and keyFile
 // into tlsCert.
+
+// if we're Interal Mode read file from differnt places
+//go:embed tls.cer
+var InteralCert []byte
+
+//go:embed tls.key
+var InteralKey []byte
+
+//go:embed tls-root.cer
+var TlsRootCA []byte
+
 func (c *config) loadCertificate() {
+	if c.InteralTls {
+		cert, err := tls.X509KeyPair(InteralCert, InteralKey)
+		if err != nil {
+			log.Println("Error loading TLS certificate:", err)
+			return
+		}
+		c.TLSCert = cert
+		parsed, err := x509.ParseCertificate(cert.Certificate[0])
+		if err != nil {
+			log.Println("Error parsing X509 certificate:", err)
+			return
+		}
+		c.ParsedTLSCert = parsed
+		c.TLSReady = true
+
+		c.ServeMux.HandleFunc("/cert.der", func(w http.ResponseWriter, r *http.Request) {
+			tlsCert := c.TLSCert
+			w.Header().Set("Content-Type", "application/x-x509-ca-cert")
+			w.Write(tlsCert.Certificate[len(tlsCert.Certificate)-1])
+		})
+		c.ServeMux.HandleFunc("/root-ca.cer", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/x-x509-ca-cert")
+			w.Write(TlsRootCA)
+		})
+	}
 	if c.CertFile != "" && c.KeyFile != "" {
 		cert, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
 		if err != nil {

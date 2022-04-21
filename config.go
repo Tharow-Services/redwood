@@ -83,6 +83,7 @@ type config struct {
 
 	CertFile         string
 	KeyFile          string
+	InteralTls       bool
 	TLSCert          tls.Certificate
 	ParsedTLSCert    *x509.Certificate
 	TLSReady         bool
@@ -159,8 +160,8 @@ func loadConfiguration() (*config, error) {
 	c.flags.BoolVar(&c.BlockObsoleteSSL, "block-obsolete-ssl", false, "block SSL connections with protocol version too old to filter")
 	c.newActiveFlag("blockpage", "", "path to template for block page, or URL of dynamic block page", c.loadBlockPage)
 	c.flags.IntVar(&c.BrotliLevel, "brotli-level", 5, "level to use for brotli compression of content")
-	c.newActiveFlag("c", "/etc/redwood/redwood.conf", "configuration file path", c.readConfigFile)
-	c.newActiveFlag("categories", "/etc/redwood/categories", "path to configuration files for categories", c.LoadCategories)
+	c.newActiveFlag("c", "redwood.conf", "configuration file path", c.readConfigFile)
+	c.newActiveFlag("categories", "categories", "path to configuration files for categories", c.LoadCategories)
 	c.newActiveFlag("censored-words", "", "file of words to remove from pages", c.readCensoredWordsFile)
 	c.flags.StringVar(&c.CGIBin, "cgi-bin", "", "path to CGI files for built-in web server")
 	c.flags.StringVar(&c.ClamdSocket, "clamd-socket", "", "socket address for ClamAV virust scanner (unix or TCP)")
@@ -190,6 +191,7 @@ func loadConfiguration() (*config, error) {
 	c.flags.IntVar(&c.Threshold, "threshold", 0, "minimum score for a blocked category to block a page")
 	c.flags.StringVar(&c.CertFile, "tls-cert", "", "path to certificate for serving HTTPS")
 	c.flags.StringVar(&c.KeyFile, "tls-key", "", "path to TLS certificate key")
+	c.flags.BoolVar(&c.InteralTls, "interal-tls", true, "use interal tls cert and key found in the executable")
 	c.flags.StringVar(&c.TLSLog, "tls-log", "", "path to tls log file")
 	c.newActiveFlag("trusted-root", "", "path to file of additional trusted root certificates (in PEM format)", c.addTrustedRoots)
 	c.newActiveFlag("verbose", "", "category of extra log messages to print", func(s string) error {
@@ -224,7 +226,7 @@ func loadConfiguration() (*config, error) {
 		}
 	}
 	if !specified {
-		err := c.readConfigFile("/etc/redwood/redwood.conf")
+		err := c.readConfigFile("redwood.conf")
 		if err != nil {
 			return nil, err
 		}
@@ -236,7 +238,7 @@ func loadConfiguration() (*config, error) {
 	}
 
 	if c.Categories == nil {
-		err := c.LoadCategories("/etc/redwood/categories")
+		err := c.LoadCategories("categories")
 		if err != nil {
 			log.Println(err)
 		}

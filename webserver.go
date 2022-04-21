@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 )
 
-// The built-in web server, which serves URLs under http://tharow.services
+// The built-in web server, which serves URLs under http://tharow.services or http://203.0.113.1
 
-var localServer string = "203.0.113.1"
+var localServer string = "readwood.services"
 
 func (c *config) startWebServer() {
 	if c.StaticFilesDir != "" {
