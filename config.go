@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/andybalholm/dhash"
-	"github.com/baruwa-enterprise/clamd"
+	"github.com/tharow-services/clamd"
 )
 
 type dhashWithThreshold struct {

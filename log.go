@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/baruwa-enterprise/clamd"
+	"github.com/tharow-services/clamd"
 )
 
 // recording pages filtered to access log
