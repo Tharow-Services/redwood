@@ -2,9 +2,12 @@ package main
 
 import (
 	"bufio"
+	"embed"
+	_ "embed"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -15,13 +18,31 @@ import (
 )
 
 // HTTP proxy authentication.
+//go:embed redwood.users
+var InteralPF embed.FS
 
 func (c *config) readPasswordFile(filename string) error {
-	f, err := os.Open(filename)
-	if err != nil {
-		return fmt.Errorf("could not open %s: %s", filename, err)
+	var f io.Reader
+	switch filename {
+	case "Interal":
+		{
+			f, err := InteralPF.Open("redwood.users")
+			if err != nil {
+				return fmt.Errorf("could not open interal file %s: %s", filename, err)
+			}
+			f.Close()
+			break
+		}
+	default:
+		{
+			f, err := os.Open(filename)
+			if err != nil {
+				return fmt.Errorf("could not open %s: %s", filename, err)
+			}
+			defer f.Close()
+		}
 	}
-	defer f.Close()
+
 	cr := newConfigReader(f)
 
 	for {

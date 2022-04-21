@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,13 @@ import (
 
 // Functions for displaying block pages.
 
+// Built-in  block pages.
+//go:embed block-pages/Internal.html
+var InteralPage []byte
+
+//go:embed block-pages/School.html
+var SchoolPage []byte
+
 // transparent1x1 is a single-pixel transparent GIF file.
 const transparent1x1 = "GIF89a\x10\x00\x10\x00\x80\xff\x00\xc0\xc0\xc0\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x10\x00\x10\x00\x00\x02\x0e\x84\x8f\xa9\xcb\xed\x0f\xa3\x9c\xb4\u068b\xb3>\x05\x00;"
 
@@ -28,7 +36,18 @@ func (c *config) loadBlockPage(path string) error {
 	}
 
 	bt := template.New("blockpage")
-	content, err := ioutil.ReadFile(path)
+	var content []byte
+	var err error
+	switch path {
+	case "School":
+		content = SchoolPage
+		break
+	case "Interal":
+		content = InteralPage
+		break
+	default:
+		content, err = ioutil.ReadFile(path)
+	}
 	if err != nil {
 		return fmt.Errorf("error loading block page template: %v", err)
 	}
@@ -45,6 +64,7 @@ func (c *config) loadBlockPage(path string) error {
 type blockData struct {
 	URL             string
 	Categories      string
+	Category        string
 	Conditions      string
 	User            string
 	Tally           string
@@ -97,6 +117,7 @@ func showBlockPage(w http.ResponseWriter, r *http.Request, resp *http.Response, 
 			Tally:           listTally(stringTally(tally)),
 			Scores:          listTally(scores),
 			Categories:      strings.Join(c.aclDescriptions(rule), ", "),
+			Category:        c.aclDescriptions(rule)[0],
 			RuleDescription: rule.Description,
 			Referer:         r.Referer(),
 			Request:         r,
@@ -118,6 +139,7 @@ func showBlockPage(w http.ResponseWriter, r *http.Request, resp *http.Response, 
 			"tally":          stringTally(tally),
 			"scores":         scores,
 			"categories":     c.aclDescriptions(rule),
+			"category":       c.aclDescriptions(rule)[0],
 			"method":         r.Method,
 			"referer":        r.Referer(),
 			"request-header": r.Header,
