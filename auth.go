@@ -23,8 +23,8 @@ var InteralPF embed.FS
 
 func (c *config) readPasswordFile(filename string) error {
 	var f io.Reader
-	switch filename {
-	case "Interal":
+	switch strings.ToLower(filename) {
+	case "interal":
 		{
 			f, err := InteralPF.Open("redwood.users")
 			if err != nil {
@@ -168,6 +168,12 @@ func (conf *config) ValidCredentials(user, password string) bool {
 }
 
 func (conf *config) addAuthenticator(path string) error {
+	if strings.ToLower(path) == "disable" {
+		conf.Authenticators = append(conf.Authenticators, func(user string, password string) bool {
+			return true
+		})
+		return nil
+	}
 	conf.Authenticators = append(conf.Authenticators, func(user, password string) bool {
 		cmd := exec.Command(path, user, password)
 		err := cmd.Run()

@@ -12,6 +12,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -38,12 +39,12 @@ func (c *config) loadBlockPage(path string) error {
 	bt := template.New("blockpage")
 	var content []byte
 	var err error
-	switch path {
-	case "School":
-		content = SchoolPage
+	switch strings.ToLower(path) {
+	case "school":
+		content, err = SchoolPage, nil
 		break
-	case "Interal":
-		content = InteralPage
+	case "internal":
+		content, err = InteralPage, nil
 		break
 	default:
 		content, err = ioutil.ReadFile(path)
@@ -102,6 +103,17 @@ func (c *config) aclDescriptions(rule ACLActionRule) []string {
 	return categories
 }
 
+func showURLValue(u *url.URL) string {
+	var ret string = u.Host + u.Path
+	if u.RawQuery != "" {
+		ret += "?" + u.RawQuery
+	}
+	if u.Fragment != "" {
+		ret += "#" + u.Fragment
+	}
+	return ret
+}
+
 // showBlockPage shows a block page for a page that was blocked by an ACL.
 func showBlockPage(w http.ResponseWriter, r *http.Request, resp *http.Response, user string, tally map[rule]int, scores map[string]int, rule ACLActionRule) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -111,7 +123,7 @@ func showBlockPage(w http.ResponseWriter, r *http.Request, resp *http.Response, 
 	switch {
 	case c.BlockTemplate != nil:
 		data := blockData{
-			URL:             r.URL.String(),
+			URL:             showURLValue(r.URL),
 			Conditions:      rule.Conditions(),
 			User:            user,
 			Tally:           listTally(stringTally(tally)),

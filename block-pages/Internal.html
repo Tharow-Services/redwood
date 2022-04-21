@@ -2,7 +2,7 @@
 
 <head>
   <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-  <title>Web Page Blocked</title>
+  <title>Redwood Interal Block Page</title>
 
   <meta http-equiv="PRAGMA" content="NO-CACHE">
   <meta name="viewport" content="initial-scale=1.0">
@@ -35,15 +35,21 @@
 
 <body>
   <div id="content">
-    <h1>Web Page Blocked</h1>
-    <p>Access to the web page you were trying to visit has been blocked in accordance with company policy. Please
-      contact your system administrator if you believe this is in error.</p>
+    <h1>Redwood Interal Block Page</h1>
+    <p>Redwood Proxy System Internal Block Page For Debuging Purposes
+      and to get the full info on a blocked page
+    </p>
     <p><b>User:</b> {{.User}} </p>
     <p><b>URL:</b> {{.URL}} </p>
-    <p><b>Category:</b> {{.Categories}} </p>
+    <p><b>Categories:</b> {{.Categories}} </p>
+    <p><b>Category:</b> {{.Category}} </p>
     <p><b>Conditions:</b> {{.Conditions}} </p>
     <p><b>Tally:</b> {{.Tally}} </p>
     <p><b>Scores:</b> {{.Scores}} </p>
+    <p><b>Rule Description:</b> {{.RuleDescription}} </p>
+    <p><b>Referer:</b> {{.Referer}} </p>
+    <p><b>Request:</b> {{.Request}} </p>
+    <p><b>Response:</b> {{.Response}} </p>
   </div>
 
 

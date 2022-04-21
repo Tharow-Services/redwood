@@ -158,7 +158,7 @@ func loadConfiguration() (*config, error) {
 	c.newActiveFlag("authenticator-api", "", "HTTP API endpoint to authenticate users", c.addHTTPAuthenticator)
 	c.flags.StringVar(&c.AuthRealm, "auth-realm", "Redwood", "realm name for authentication prompts")
 	c.flags.BoolVar(&c.BlockObsoleteSSL, "block-obsolete-ssl", false, "block SSL connections with protocol version too old to filter")
-	c.newActiveFlag("blockpage", "School", "path to template for block page, or URL of dynamic block page", c.loadBlockPage)
+	c.newActiveFlag("blockpage", "school", "path to template for block page, or URL of dynamic block page", c.loadBlockPage)
 	c.flags.IntVar(&c.BrotliLevel, "brotli-level", 5, "level to use for brotli compression of content")
 	c.newActiveFlag("c", "redwood.conf", "configuration file path", c.readConfigFile)
 	c.newActiveFlag("categories", "categories", "path to configuration files for categories", c.LoadCategories)

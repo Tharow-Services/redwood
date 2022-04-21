@@ -10,7 +10,7 @@ import (
 
 // The built-in web server, which serves URLs under http://tharow.services or http://203.0.113.1
 
-var localServer string = "readwood.services"
+var localServer string = "redwood.services"
 
 func (c *config) startWebServer() {
 	if c.StaticFilesDir != "" {
