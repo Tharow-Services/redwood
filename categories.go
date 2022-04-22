@@ -59,7 +59,42 @@ func (cf *config) LoadCategories(dirName string) error {
 	if cf.Categories == nil {
 		cf.Categories = map[string]*category{}
 	}
+	if strings.ToLower(dirName)=="built-in" {
+		return cf.loadBuildInCategories("categories", nil)
+	}
 	return cf.loadCategories(dirName, nil)
+}
+func (cf *config) loadBuildInCategories(dirName string, parent *category ) error {
+	dir, err := 
+	if err != nil {
+		return fmt.Errorf("Could not open category directory: %v", err)
+	}
+	defer dir.Close()
+
+	info, err := dir.Readdir(0)
+	if err != nil {
+		return fmt.Errorf("Could not read category directory: %v", err)
+	}
+
+	for _, fi := range info {
+		if name := fi.Name(); fi.IsDir() && name[0] != '.' {
+			categoryPath := filepath.Join(dirName, name)
+			c, err := loadCategory(categoryPath, parent)
+			if err != nil {
+				log.Printf("Error loading category %s: %v", name, err)
+				continue
+			}
+			cf.Categories[c.name] = c
+
+			// Load child categories.
+			err = cf.loadCategories(categoryPath, c)
+			if err != nil {
+				log.Printf("Error loading child categories of %s: %v", c.name, err)
+			}
+		}
+	}
+
+	return nil
 }
 
 func (cf *config) loadCategories(dirName string, parent *category) error {

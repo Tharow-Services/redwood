@@ -45,6 +45,7 @@ type config struct {
 	ErrorTemplate      *template.Template
 	ErrorURL           string
 	Categories         map[string]*category
+	BuiltInCategories  []string
 	ContentPhraseList  phraseList
 	CountOnce          bool
 	Threshold          int
@@ -160,7 +161,7 @@ func loadConfiguration() (*config, error) {
 	c.newActiveFlag("blockpage", "school", "path to template for block page, or URL of dynamic block page", c.loadBlockPage)
 	c.flags.IntVar(&c.BrotliLevel, "brotli-level", 5, "level to use for brotli compression of content")
 	c.newActiveFlag("c", "redwood.conf", "configuration file path", c.readConfigFile)
-	c.newActiveFlag("categories", "categories", "path to configuration files for categories", c.LoadCategories)
+	c.newActiveFlag("categories", "built-in", "path to configuration files for categories", c.LoadCategories)
 	c.newActiveFlag("censored-words", "", "file of words to remove from pages", c.readCensoredWordsFile)
 	c.flags.StringVar(&c.CGIBin, "cgi-bin", "", "path to CGI files for built-in web server")
 	c.flags.DurationVar(&c.CloseIdleConnections, "close-idle-connections", time.Minute, "how often to close idle HTTP connections")
@@ -199,7 +200,7 @@ func loadConfiguration() (*config, error) {
 
 	c.stringListFlag("http-proxy", "address (host:port) to listen for proxy connections on", &c.ProxyAddresses)
 	c.stringListFlag("transparent-https", "address to listen for intercepted HTTPS connections on", &c.TransparentAddresses)
-
+	c.stringListFlag("built-in-categories", "enable a list of built-in categories, selecting a categories folder overrides this", &c.BuiltInCategories)
 	c.stringListFlag("classifier-ignore", "category to omit from classifier results", &c.ClassifierIgnoredCategories)
 	c.stringListFlag("public-suffix", "domain to treat as a public suffix", &c.PublicSuffixes)
 	c.stringListFlag("external-classifier", "HTTP API endpoint to check URLs against", &c.ExternalClassifiers)
