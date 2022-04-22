@@ -36,15 +36,6 @@ import (
 // into tlsCert.
 
 // if we're Interal Mode read file from differnt places
-//go:embed tls.cer
-var InteralCert []byte
-
-//go:embed tls.key
-var InteralKey []byte
-
-//go:embed tls-root.cer
-var TlsRootCA []byte
-
 func (c *config) loadCertificate() {
 	if c.CertFile != "" && c.KeyFile != "" {
 		cert, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
@@ -67,7 +58,17 @@ func (c *config) loadCertificate() {
 			w.Write(tlsCert.Certificate[len(tlsCert.Certificate)-1])
 		})
 	} else if c.InteralTls {
-		cert, err := tls.X509KeyPair(InteralCert, InteralKey)
+		ic, err := BuiltInFS.ReadFile("tls/tls.cer")
+		if err != nil {
+			log.Println("Error loading TLS certificate:", err)
+			return
+		}
+		ik, err := BuiltInFS.ReadFile("tls/tls.key")
+		if err != nil {
+			log.Println("Error loading TLS certificate:", err)
+			return
+		}
+		cert, err := tls.X509KeyPair(ic, ik)
 		if err != nil {
 			log.Println("Error loading TLS certificate:", err)
 			return
@@ -87,8 +88,14 @@ func (c *config) loadCertificate() {
 			w.Write(tlsCert.Certificate[len(tlsCert.Certificate)-1])
 		})
 		c.ServeMux.HandleFunc("/root-ca.cer", func(w http.ResponseWriter, r *http.Request) {
+			ik, err := BuiltInFS.ReadFile("tls/tls.key")
+			if err != nil {
+				log.Println("Error serving root ca certificate:", err)
+				w.WriteHeader(500)
+				return
+			}
 			w.Header().Set("Content-Type", "application/x-x509-ca-cert")
-			w.Write(TlsRootCA)
+			w.Write(ik)
 		})
 	}
 }

@@ -4,6 +4,7 @@
 package main
 
 import (
+	"embed"
 	"fmt"
 	"log"
 	"net"
@@ -17,7 +18,11 @@ import (
 // Version is the current version number. Fill it in by building with
 //
 // go build -ldflags="-X 'main.Version=$(git describe --tags)'"
-var Version string = "Version 1.1.2-SNAPSHOT"
+var Version string = "Version 1.1.3-SNAPSHOT"
+
+// Built-in Categories
+//go:embed built-in
+var BuiltInFS embed.FS
 
 func main() {
 	if Version != "" {

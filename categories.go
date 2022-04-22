@@ -3,6 +3,7 @@ package main
 // storage and loading of categories
 
 import (
+	_ "embed"
 	"fmt"
 	"log"
 	"os"
@@ -59,29 +60,31 @@ func (cf *config) LoadCategories(dirName string) error {
 	if cf.Categories == nil {
 		cf.Categories = map[string]*category{}
 	}
-	if strings.ToLower(dirName)=="built-in" {
-		return cf.loadBuildInCategories("categories", nil)
+	if strings.ToLower(dirName) == "built-in" {
+		return cf.loadBuildInCategories("categories/", nil)
 	}
 	return cf.loadCategories(dirName, nil)
 }
-func (cf *config) loadBuildInCategories(dirName string, parent *category ) error {
-	dir, err := 
-	if err != nil {
-		return fmt.Errorf("Could not open category directory: %v", err)
+func contains(s []string, e string) bool {
+	for _, a := range s {
+		if a == e {
+			return true
+		}
 	}
-	defer dir.Close()
+	return false
+}
 
-	info, err := dir.Readdir(0)
+func (cf *config) loadBuildInCategories(dirName string, parent *category) error {
+	info, err := BuiltInFS.ReadDir(dirName)
 	if err != nil {
-		return fmt.Errorf("Could not read category directory: %v", err)
+		return fmt.Errorf("Could not read built-in category directory: %v", err)
 	}
-
 	for _, fi := range info {
-		if name := fi.Name(); fi.IsDir() && name[0] != '.' {
+		if name := fi.Name(); fi.IsDir() && name[0] != '.' && contains(cf.BuiltInCategories, name) {
 			categoryPath := filepath.Join(dirName, name)
-			c, err := loadCategory(categoryPath, parent)
+			c, err := loadBuiltinCategory(categoryPath, parent)
 			if err != nil {
-				log.Printf("Error loading category %s: %v", name, err)
+				log.Printf("Error loading built-in category %s: %v", name, err)
 				continue
 			}
 			cf.Categories[c.name] = c
@@ -89,12 +92,114 @@ func (cf *config) loadBuildInCategories(dirName string, parent *category ) error
 			// Load child categories.
 			err = cf.loadCategories(categoryPath, c)
 			if err != nil {
-				log.Printf("Error loading child categories of %s: %v", c.name, err)
+				log.Printf("Error loading built-in child categories of %s: %v", c.name, err)
 			}
 		}
 	}
 
 	return nil
+}
+
+// loadCategory loads the configuration for one category
+func loadBuiltinCategory(dirname string, parent *category) (c *category, err error) {
+	c = new(category)
+	c.weights = make(map[rule]weight)
+	c.name = filepath.Base(dirname)
+	if parent != nil {
+		c.name = parent.name + "/" + c.name
+	}
+	c.description = c.name
+
+	confFile, err := BuiltInFS.ReadFile(filepath.Join(dirname, "category.conf"))
+	if err != nil {
+		return nil, err
+	}
+
+	conf := yaml.Config(string(confFile))
+	s, _ := conf.Get("description")
+	if s != "" {
+		c.description = s
+	}
+	s, _ = conf.Get("action")
+	s = strings.TrimSpace(strings.ToLower(s))
+	switch s {
+	case "allow":
+		c.action = ALLOW
+	case "ignore":
+		c.action = IGNORE
+	case "block":
+		c.action = BLOCK
+	case "acl":
+		c.action = ACL
+	case "":
+		// No-op.
+	default:
+		return nil, fmt.Errorf("unrecognized action %s in %s", s, confFile)
+	}
+
+	s, _ = conf.Get("invisible")
+	if s != "" {
+		c.invisible, err = strconv.ParseBool(strings.TrimSpace(s))
+		if err != nil {
+			log.Printf("Invalid setting for 'invisible' in %s: %q", confFile, s)
+		}
+	}
+
+	if parent != nil {
+		// Copy rules from parent category.
+		for r, w := range parent.weights {
+			c.weights[r] = w
+		}
+	}
+
+	//ruleFiles, err := filepath.Glob(filepath.Join(dirname, "*.list"))
+	ruleFiles, err := BuiltInFS.ReadDir(filepath.Join(dirname, "*.list"))
+	if err != nil {
+		return nil, fmt.Errorf("error listing built-in rule files: %v", err)
+	}
+	//sort.Strings(ruleFiles)
+
+	for _, list := range ruleFiles {
+		if list.IsDir() {
+			continue
+		}
+		r, err := BuiltInFS.Open(filepath.Join(dirname, list.Name()))
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+		defer r.Close()
+		cr := newConfigReader(r)
+
+		defaultWeight := 0
+
+		for {
+			line, err := cr.ReadLine()
+			if err != nil {
+				break
+			}
+
+			r, line, err := parseRule(line)
+			if err != nil {
+				log.Printf("Error in line %d of %s: %s", cr.LineNo, list, err)
+				continue
+			}
+
+			var w weight
+			n, _ := fmt.Sscan(line, &w.points, &w.maxPoints)
+			if n == 0 {
+				w.points = defaultWeight
+			}
+
+			if r.t == defaultRule {
+				defaultWeight = w.points
+			} else {
+				c.weights[r] = w
+			}
+		}
+	}
+
+	return c, nil
 }
 
 func (cf *config) loadCategories(dirName string, parent *category) error {

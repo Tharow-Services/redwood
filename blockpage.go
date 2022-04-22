@@ -20,10 +20,10 @@ import (
 // Functions for displaying block pages.
 
 // Built-in  block pages.
-//go:embed block-pages/Internal.html
+//go:embed built-in/block-pages/Internal.html
 var InteralPage []byte
 
-//go:embed block-pages/School.html
+//go:embed built-in/block-pages/School.html
 var SchoolPage []byte
 
 // transparent1x1 is a single-pixel transparent GIF file.
@@ -215,7 +215,14 @@ func (c *config) loadErrorPage(path string) error {
 	}
 
 	bt := template.New("errorpage")
-	content, err := ioutil.ReadFile(path)
+	var content []byte
+	var err error
+	if strings.ToLower(path) == "internal" {
+		content, err = BuiltInFS.ReadFile("error.html")
+	} else {
+		content, err = ioutil.ReadFile(path)
+	}
+
 	if err != nil {
 		return fmt.Errorf("error loading error page template: %v", err)
 	}

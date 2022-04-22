@@ -176,7 +176,7 @@ func (h proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if _, port, err := net.SplitHostPort(r.URL.Host); err == nil && port == "80" && r.Method == "CONNECT" {
 		conn, err := newHijackedConn(w)
 		if err != nil {
-			log.Println("Error hijacking connection for CONNECT request to %s: %v", r.URL.Host, err)
+			log.Printf("Error hijacking connection for CONNECT request to %s: %v", r.URL.Host, err)
 			panic(http.ErrAbortHandler)
 		}
 		fmt.Fprint(conn, "HTTP/1.1 200 Connection Established\r\n\r\n")
@@ -217,7 +217,7 @@ func (h proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// doesn't work till after the connection is bumped.
 		conn, err := newHijackedConn(w)
 		if err != nil {
-			log.Println("Error hijacking connection for CONNECT request to %s: %v", r.URL.Host, err)
+			log.Printf("Error hijacking connection for CONNECT request to %s: %v", r.URL.Host, err)
 			panic(http.ErrAbortHandler)
 		}
 		fmt.Fprint(conn, "HTTP/1.1 200 Connection Established\r\n\r\n")
@@ -246,7 +246,7 @@ func (h proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// …and not TLSReady
 		conn, err := newHijackedConn(w)
 		if err != nil {
-			log.Println("Error hijacking connection for CONNECT request to %s: %v", r.URL.Host, err)
+			log.Printf("Error hijacking connection for CONNECT request to %s: %v", r.URL.Host, err)
 			panic(http.ErrAbortHandler)
 		}
 		fmt.Fprint(conn, "HTTP/1.1 200 Connection Established\r\n\r\n")

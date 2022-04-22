@@ -151,7 +151,7 @@ func loadConfiguration() (*config, error) {
 		Verbose:              map[string]bool{},
 	}
 
-	c.flags.StringVar(&c.AccessLog, "access-log", "", "path to access-log file")
+	c.flags.StringVar(&c.AccessLog, "access-log", "redwood.access.log", "path to access-log file")
 	c.newActiveFlag("acls", "", "access-control-list (ACL) rule file", c.ACLs.load)
 	c.newActiveFlag("api-acls", "", "ACL rule file for API requests", c.APIACLs.load)
 	c.newActiveFlag("authenticator", "", "program to authenticate users", c.addAuthenticator)
@@ -169,7 +169,7 @@ func loadConfiguration() (*config, error) {
 	c.newActiveFlag("content-pruning", "", "path to config file for content pruning", c.loadPruningConfig)
 	c.flags.BoolVar(&c.CountOnce, "count-once", false, "count each phrase only once per page")
 	c.flags.IntVar(&c.DhashThreshold, "dhash-threshold", 0, "how many bits can be different in an image's hash to match")
-	c.newActiveFlag("errorpage", "", "path to template for error page, or URL of dynamic error page", c.loadErrorPage)
+	c.newActiveFlag("errorpage", "internal", "path to template for error page, or URL of dynamic error page", c.loadErrorPage)
 	c.flags.IntVar(&c.GZIPLevel, "gzip-level", 6, "level to use for gzip compression of content")
 	c.flags.BoolVar(&c.HTTP2Downstream, "http2-downstream", true, "Use HTTP/2 for connections to clients.")
 	c.flags.BoolVar(&c.HTTP2Upstream, "http2-upstream", true, "Use HTTP/2 for connections to upstream servers.")
@@ -191,7 +191,7 @@ func loadConfiguration() (*config, error) {
 	c.flags.StringVar(&c.CertFile, "tls-cert", "", "path to certificate for serving HTTPS")
 	c.flags.StringVar(&c.KeyFile, "tls-key", "", "path to TLS certificate key")
 	c.flags.BoolVar(&c.InteralTls, "interal-tls", true, "use interal tls cert and key found in the executable")
-	c.flags.StringVar(&c.TLSLog, "tls-log", "", "path to tls log file")
+	c.flags.StringVar(&c.TLSLog, "tls-log", "redwood.tls.log", "path to tls log file")
 	c.newActiveFlag("trusted-root", "", "path to file of additional trusted root certificates (in PEM format)", c.addTrustedRoots)
 	c.newActiveFlag("verbose", "", "category of extra log messages to print", func(s string) error {
 		c.Verbose[s] = true
@@ -227,6 +227,17 @@ func loadConfiguration() (*config, error) {
 	if !specified {
 		err := c.readConfigFile("redwood.conf")
 		if err != nil {
+			rc, err := BuiltInFS.ReadFile("./redwood.conf")
+			if err != nil {
+				return nil, fmt.Errorf("built-in fs: %s", err)
+			}
+			os.WriteFile("redwood.conf", rc, 0666)
+			if err == nil {
+				err := c.readConfigFile("redwood.conf")
+				if err != nil {
+					return nil, err
+				}
+			}
 			return nil, err
 		}
 	}
