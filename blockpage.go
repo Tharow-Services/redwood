@@ -42,10 +42,8 @@ func (c *config) loadBlockPage(path string) error {
 	switch strings.ToLower(path) {
 	case "school":
 		content, err = SchoolPage, nil
-		break
 	case "internal":
 		content, err = InteralPage, nil
-		break
 	default:
 		content, err = ioutil.ReadFile(path)
 	}
@@ -114,9 +112,9 @@ func showURLValue(u *url.URL) string {
 	return ret
 }
 
-func defaultIfNull(v *string, d string) string {
-	if v != nil {
-		return "Doom Mater"
+func defaultIfNull(v, d string) string {
+	if v != "" {
+		return v
 	}
 	return d
 
@@ -133,7 +131,7 @@ func showBlockPage(w http.ResponseWriter, r *http.Request, resp *http.Response, 
 		data := blockData{
 			URL:             showURLValue(r.URL),
 			Conditions:      rule.Conditions(),
-			User:            user,
+			User:            defaultIfNull(user, "tharow/anonymous"),
 			Tally:           listTally(stringTally(tally)),
 			Scores:          listTally(scores),
 			Categories:      strings.Join(c.aclDescriptions(rule), ", "),

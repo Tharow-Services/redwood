@@ -24,6 +24,9 @@ var Version string = "Version 1.1.3-SNAPSHOT"
 //go:embed built-in
 var BuiltInFS embed.FS
 
+// Built-in directory name
+const BuiltinDir = "built-in/"
+
 func main() {
 	if Version != "" {
 		log.Println("Redwood", Version)
@@ -101,4 +104,8 @@ func main() {
 		// Wait forever (or until somebody calls log.Fatal).
 		select {}
 	}
+}
+
+func getBuiltin(s string) string {
+	return BuiltinDir + s
 }

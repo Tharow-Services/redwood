@@ -60,27 +60,23 @@ func (cf *config) LoadCategories(dirName string) error {
 	if cf.Categories == nil {
 		cf.Categories = map[string]*category{}
 	}
-	if strings.ToLower(dirName) == "built-in" {
-		return cf.loadBuildInCategories("categories/", nil)
+	if strings.Contains(strings.ToLower(dirName), "built-in") {
+		return cf.loadBuildInCategories("built-in/categories", nil)
+	} else {
+		return cf.loadCategories(dirName, nil)
 	}
-	return cf.loadCategories(dirName, nil)
-}
-func contains(s []string, e string) bool {
-	for _, a := range s {
-		if a == e {
-			return true
-		}
-	}
-	return false
+
 }
 
 func (cf *config) loadBuildInCategories(dirName string, parent *category) error {
 	info, err := BuiltInFS.ReadDir(dirName)
 	if err != nil {
-		return fmt.Errorf("Could not read built-in category directory: %v", err)
+		return fmt.Errorf("could not read built-in category directory: %v", err)
 	}
+	var selc stringSet = cf.BuiltInCategories
+
 	for _, fi := range info {
-		if name := fi.Name(); fi.IsDir() && name[0] != '.' && contains(cf.BuiltInCategories, name) {
+		if name := fi.Name(); fi.IsDir() && name[0] != '.' && (selc.contains(name) || selc.contains("?all")) {
 			categoryPath := filepath.Join(dirName, name)
 			c, err := loadBuiltinCategory(categoryPath, parent)
 			if err != nil {
@@ -120,6 +116,7 @@ func loadBuiltinCategory(dirname string, parent *category) (c *category, err err
 	if s != "" {
 		c.description = s
 	}
+
 	s, _ = conf.Get("action")
 	s = strings.TrimSpace(strings.ToLower(s))
 	switch s {
@@ -198,20 +195,20 @@ func loadBuiltinCategory(dirname string, parent *category) (c *category, err err
 			}
 		}
 	}
-
+	log.Printf("We Have Loaded Built-in Category: %s", c.description)
 	return c, nil
 }
 
 func (cf *config) loadCategories(dirName string, parent *category) error {
 	dir, err := os.Open(dirName)
 	if err != nil {
-		return fmt.Errorf("Could not open category directory: %v", err)
+		return fmt.Errorf("could not open category directory: %v", err)
 	}
 	defer dir.Close()
 
 	info, err := dir.Readdir(0)
 	if err != nil {
-		return fmt.Errorf("Could not read category directory: %v", err)
+		return fmt.Errorf("could not read category directory: %v", err)
 	}
 
 	for _, fi := range info {
@@ -328,7 +325,7 @@ func loadCategory(dirname string, parent *category) (c *category, err error) {
 			}
 		}
 	}
-
+	log.Printf("We Have Loaded Category: %s", c.description)
 	return c, nil
 }
 
@@ -336,7 +333,7 @@ func loadCategory(dirname string, parent *category) (c *category, err error) {
 // them to URLRules and phraseRules.
 func (cf *config) collectRules() {
 	for _, c := range cf.Categories {
-		for rule, _ := range c.weights {
+		for rule := range c.weights {
 			switch rule.t {
 			case contentPhrase:
 				cf.ContentPhraseList.addPhrase(rule.content)

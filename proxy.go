@@ -161,10 +161,10 @@ func (h proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Handle IPv6 hostname without brackets in CONNECT request.
 	if r.Method == "CONNECT" {
 		hostport := r.URL.Host
-		host, port, err := net.SplitHostPort(hostport)
+		_, _, err := net.SplitHostPort(hostport)
 		if err, ok := err.(*net.AddrError); ok && err.Err == "too many colons in address" {
 			colon := strings.LastIndex(hostport, ":")
-			host, port = hostport[:colon], hostport[colon+1:]
+			host, port := hostport[:colon], hostport[colon+1:]
 			if ip := net.ParseIP(host); ip != nil {
 				r.URL.Host = net.JoinHostPort(host, port)
 			}
@@ -736,7 +736,6 @@ func (h proxyHandler) makeWebsocketConnection(w http.ResponseWriter, r *http.Req
 	}()
 	io.Copy(serverConn, bufrw)
 	serverConn.Close()
-	return
 }
 
 var hopByHop = []string{

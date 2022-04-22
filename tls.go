@@ -58,14 +58,14 @@ func (c *config) loadCertificate() {
 			w.Write(tlsCert.Certificate[len(tlsCert.Certificate)-1])
 		})
 	} else if c.InteralTls {
-		ic, err := BuiltInFS.ReadFile("tls/tls.cer")
+		ic, err := BuiltInFS.ReadFile("built-in/tls.cer")
 		if err != nil {
-			log.Println("Error loading TLS certificate:", err)
+			log.Println("Error loading TLS certificate:", fmt.Errorf("built-in fs: %s", err))
 			return
 		}
-		ik, err := BuiltInFS.ReadFile("tls/tls.key")
+		ik, err := BuiltInFS.ReadFile("built-in/tls.key")
 		if err != nil {
-			log.Println("Error loading TLS certificate:", err)
+			log.Println("Error loading TLS certificate:", fmt.Errorf("built-in fs: %s", err))
 			return
 		}
 		cert, err := tls.X509KeyPair(ic, ik)
@@ -88,7 +88,7 @@ func (c *config) loadCertificate() {
 			w.Write(tlsCert.Certificate[len(tlsCert.Certificate)-1])
 		})
 		c.ServeMux.HandleFunc("/root-ca.cer", func(w http.ResponseWriter, r *http.Request) {
-			ik, err := BuiltInFS.ReadFile("tls/tls.key")
+			ik, err := BuiltInFS.ReadFile("built-in/tls-root.key")
 			if err != nil {
 				log.Println("Error serving root ca certificate:", err)
 				w.WriteHeader(500)

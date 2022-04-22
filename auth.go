@@ -222,7 +222,7 @@ func (conf *config) addHTTPAuthenticator(endpoint string) error {
 func (c *config) loadIPToUser(filename string) error {
 	f, err := os.Open(filename)
 	if err != nil {
-		return fmt.Errorf("could not open %s: %s\n", filename, err)
+		return fmt.Errorf("could not open %s: %s", filename, err)
 	}
 	defer f.Close()
 

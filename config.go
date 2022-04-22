@@ -198,14 +198,14 @@ func loadConfiguration() (*config, error) {
 		return nil
 	})
 
-	c.stringListFlag("http-proxy", "address (host:port) to listen for proxy connections on", &c.ProxyAddresses)
-	c.stringListFlag("transparent-https", "address to listen for intercepted HTTPS connections on", &c.TransparentAddresses)
-	c.stringListFlag("built-in-categories", "enable a list of built-in categories, selecting a categories folder overrides this", &c.BuiltInCategories)
-	c.stringListFlag("classifier-ignore", "category to omit from classifier results", &c.ClassifierIgnoredCategories)
-	c.stringListFlag("public-suffix", "domain to treat as a public suffix", &c.PublicSuffixes)
-	c.stringListFlag("external-classifier", "HTTP API endpoint to check URLs against", &c.ExternalClassifiers)
+	c.stringListFlag("http-proxy", ":8080", "address (host:port) to listen for proxy connections on", &c.ProxyAddresses)
+	c.stringListFlag("transparent-https", "", "address to listen for intercepted HTTPS connections on", &c.TransparentAddresses)
+	c.stringListFlag("enabled-categories", "ads blacklist", "enable a list of built-in categories, selecting a categories folder overrides this", &c.BuiltInCategories)
+	c.stringListFlag("classifier-ignore", "", "category to omit from classifier results", &c.ClassifierIgnoredCategories)
+	c.stringListFlag("public-suffix", "", "domain to treat as a public suffix", &c.PublicSuffixes)
+	c.stringListFlag("external-classifier", "", "HTTP API endpoint to check URLs against", &c.ExternalClassifiers)
 
-	c.stringListFlag("starlark-script", "Starlark script to load", &c.StarlarkScripts)
+	c.stringListFlag("starlark-script", "", "Starlark script to load", &c.StarlarkScripts)
 
 	c.newActiveFlag("virtual-host", "", "a hostname substitution to apply to HTTP requests (e.g. -virtual-host me.local localhost)", func(val string) error {
 		f := strings.Fields(val)
@@ -227,10 +227,9 @@ func loadConfiguration() (*config, error) {
 	if !specified {
 		err := c.readConfigFile("redwood.conf")
 		if err != nil {
-			rc, err := BuiltInFS.ReadFile("built-in/redwood.conf")
-			di, _ := BuiltInFS.ReadDir("built-in")
+			rc, err := BuiltInFS.ReadFile(getBuiltin("redwood.conf"))
 			if err != nil {
-				return nil, fmt.Errorf("built-in fs: %s: %s", err, di)
+				return nil, fmt.Errorf("built-in fs: %s", err)
 			}
 			os.WriteFile("redwood.conf", rc, 0666)
 			if err == nil {
@@ -249,7 +248,7 @@ func loadConfiguration() (*config, error) {
 	}
 
 	if c.Categories == nil {
-		err := c.LoadCategories("categories")
+		err := c.LoadCategories("built-in")
 		if err != nil {
 			log.Println(err)
 		}
@@ -400,8 +399,8 @@ func (c *config) newActiveFlag(name, value, usage string, f func(string) error) 
 	return af
 }
 
-func (c *config) stringListFlag(name, usage string, list *[]string) flag.Value {
-	return c.newActiveFlag(name, "", usage, func(s string) error {
+func (c *config) stringListFlag(name, value, usage string, list *[]string) flag.Value {
+	return c.newActiveFlag(name, value, usage, func(s string) error {
 		*list = append(*list, s)
 		return nil
 	})

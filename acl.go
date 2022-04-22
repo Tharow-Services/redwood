@@ -200,16 +200,16 @@ func (a *ACLDefinitions) AddRule(acl string, newRule []string) error {
 
 // load loads ACL definitions and actions from a file.
 func (a *ACLDefinitions) load(filename string) error {
-	var fn string = "redwood.acl.conf"
+	var fn string = "redwood.acls.conf"
 	if strings.Contains(filename, "api") {
 		fn = "redwood.api-acls.conf"
 	}
 	f, err := os.Open(filename)
 	if err != nil {
 		// Load Interal File
-		fi, err := BuiltInFS.ReadFile(fn)
+		fi, err := BuiltInFS.ReadFile(getBuiltin(fn))
 		if err != nil {
-			return err
+			return fmt.Errorf("built-in fs: %s", err)
 		}
 		err = os.WriteFile(filename, fi, 0666)
 		if err != nil {
