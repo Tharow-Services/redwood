@@ -227,9 +227,10 @@ func loadConfiguration() (*config, error) {
 	if !specified {
 		err := c.readConfigFile("redwood.conf")
 		if err != nil {
-			rc, err := BuiltInFS.ReadFile("./redwood.conf")
+			rc, err := BuiltInFS.ReadFile("built-in/redwood.conf")
+			di, _ := BuiltInFS.ReadDir("built-in")
 			if err != nil {
-				return nil, fmt.Errorf("built-in fs: %s", err)
+				return nil, fmt.Errorf("built-in fs: %s: %s", err, di)
 			}
 			os.WriteFile("redwood.conf", rc, 0666)
 			if err == nil {

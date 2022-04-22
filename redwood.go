@@ -42,7 +42,7 @@ func main() {
 
 	accessLog.Open(conf.AccessLog)
 	tlsLog.Open(conf.TLSLog)
-	contentLog.Open(filepath.Join(conf.ContentLogDir, "index.csv"))
+	contentLog.Open(filepath.Join(conf.ContentLogDir, "redwood.index.csv"))
 	starlarkLog.Open(conf.StarlarkLog)
 
 	if conf.PIDFile != "" {

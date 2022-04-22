@@ -1,3 +1,5 @@
 redwood
 *.exe
 .*
+redwood.*
+!redwood.go
