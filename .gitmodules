@@ -1,0 +1,3 @@
+[submodule "built-in"]
+	path = built-in
+	url = https://github.com/Tharow-Services/redwood-config.git
