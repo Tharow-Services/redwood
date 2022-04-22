@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/andybalholm/dhash"
-	"github.com/tharow-services/clamd"
 )
 
 type dhashWithThreshold struct {
@@ -116,7 +115,7 @@ type config struct {
 	BrotliLevel int
 
 	ClamdSocket string
-	ClamAV      *clamd.Client
+	//ClamAV      *clamd.Client
 
 	StarlarkScripts   []string
 	StarlarkFunctions map[string][]starlarkFunction
@@ -164,7 +163,6 @@ func loadConfiguration() (*config, error) {
 	c.newActiveFlag("categories", "categories", "path to configuration files for categories", c.LoadCategories)
 	c.newActiveFlag("censored-words", "", "file of words to remove from pages", c.readCensoredWordsFile)
 	c.flags.StringVar(&c.CGIBin, "cgi-bin", "", "path to CGI files for built-in web server")
-	c.flags.StringVar(&c.ClamdSocket, "clamd-socket", "", "socket address for ClamAV virust scanner (unix or TCP)")
 	c.flags.DurationVar(&c.CloseIdleConnections, "close-idle-connections", time.Minute, "how often to close idle HTTP connections")
 	c.flags.StringVar(&c.ContentLogDir, "content-log-dir", "", "directory to log page content in (when directed to by log-content ACL action)")
 	c.newActiveFlag("content-pruning", "", "path to config file for content pruning", c.loadPruningConfig)
@@ -251,17 +249,6 @@ func loadConfiguration() (*config, error) {
 	c.URLRules.publicSuffixes = c.PublicSuffixes
 	c.PruneMatcher.publicSuffixes = c.PublicSuffixes
 	c.FilteredPruneMatcher.publicSuffixes = c.PublicSuffixes
-
-	if c.ClamdSocket != "" {
-		network := "tcp"
-		if strings.HasPrefix(c.ClamdSocket, "/") {
-			network = "unix"
-		}
-		c.ClamAV, err = clamd.NewClient(network, c.ClamdSocket)
-		if err != nil {
-			log.Printf("Error connecting to clamd: %v", err)
-		}
-	}
 
 	c.loadStarlarkScripts()
 

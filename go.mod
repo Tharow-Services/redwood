@@ -17,7 +17,6 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/qri-io/starlib v0.5.0
 	github.com/remogatto/ftpget v0.0.0-20120222025949-5c3c8286a3b0
-	github.com/tharow-services/clamd v1.0.4
 	go.starlark.net v0.0.0-20220328144851-d1966c6b9fcd
 	golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4
 	golang.org/x/image v0.0.0-20220413100746-70e8d0d3baa9

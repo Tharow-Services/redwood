@@ -30,7 +30,6 @@ import (
 	"github.com/golang/gddo/httputil"
 	"github.com/golang/gddo/httputil/header"
 	"github.com/klauspost/compress/gzip"
-	"github.com/tharow-services/clamd"
 	"go.starlark.net/starlark"
 	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
@@ -229,16 +228,16 @@ func (h proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch request.Action.Action {
 	case "block":
 		showBlockPage(w, r, nil, user, request.Tally, request.Scores.data, request.Action)
-		logAccess(r, nil, 0, false, user, request.Tally, request.Scores.data, request.Action, "", request.Ignored, nil)
+		logAccess(r, nil, 0, false, user, request.Tally, request.Scores.data, request.Action, "", request.Ignored)
 		return
 	case "block-invisible":
 		showInvisibleBlock(w)
-		logAccess(r, nil, 0, false, user, request.Tally, request.Scores.data, request.Action, "", request.Ignored, nil)
+		logAccess(r, nil, 0, false, user, request.Tally, request.Scores.data, request.Action, "", request.Ignored)
 		return
 	}
 
 	if r.Host == localServer {
-		logAccess(r, nil, 0, false, user, request.Tally, request.Scores.data, request.Action, "", request.Ignored, nil)
+		logAccess(r, nil, 0, false, user, request.Tally, request.Scores.data, request.Action, "", request.Ignored)
 		getConfig().ServeMux.ServeHTTP(w, r)
 		return
 	}
@@ -251,13 +250,13 @@ func (h proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			panic(http.ErrAbortHandler)
 		}
 		fmt.Fprint(conn, "HTTP/1.1 200 Connection Established\r\n\r\n")
-		logAccess(r, nil, 0, false, user, request.Tally, request.Scores.data, request.Action, "", request.Ignored, nil)
+		logAccess(r, nil, 0, false, user, request.Tally, request.Scores.data, request.Action, "", request.Ignored)
 		connectDirect(conn, r.URL.Host, nil, dialer)
 		return
 	}
 
 	if r.Header.Get("Upgrade") == "websocket" {
-		logAccess(r, nil, 0, false, user, request.Tally, request.Scores.data, request.Action, "", request.Ignored, nil)
+		logAccess(r, nil, 0, false, user, request.Tally, request.Scores.data, request.Action, "", request.Ignored)
 		h.makeWebsocketConnection(w, r)
 		return
 	}
@@ -332,7 +331,7 @@ func (h proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		showErrorPage(w, r, err)
 		log.Printf("error fetching %s: %s", r.URL, err)
-		logAccess(r, nil, 0, false, user, request.Tally, request.Scores.data, request.Action, "", request.Ignored, nil)
+		logAccess(r, nil, 0, false, user, request.Tally, request.Scores.data, request.Action, "", request.Ignored)
 		return
 	}
 	defer resp.Body.Close()
@@ -380,9 +379,6 @@ func (h proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var possibleActions []string
 		if r.Method != "HEAD" {
 			possibleActions = append(possibleActions, "hash-image", "phrase-scan")
-			if conf.ClamAV != nil {
-				possibleActions = append(possibleActions, "virus-scan")
-			}
 		}
 
 		scanAction, _ = conf.ChooseACLCategoryAction(response.ACLs.data, response.Scores.data, conf.Threshold, possibleActions...)
@@ -398,17 +394,6 @@ func (h proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "hash-image":
 		if err := doImageHash(response); err != nil {
 			showErrorPage(w, r, err)
-			return
-		}
-
-	case "virus-scan":
-		if err := doVirusScan(response); err != nil {
-			showErrorPage(w, r, err)
-			return
-		}
-		if response.Action.Action == "block" {
-			showBlockPage(w, r, resp, user, response.Tally, response.Scores.data, response.Action)
-			logAccess(r, resp, response.Response.ContentLength, false, user, response.Tally, response.Scores.data, response.Action, "", nil, response.ClamdResponses())
 			return
 		}
 	}
@@ -431,11 +416,11 @@ func (h proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch response.Action.Action {
 	case "block":
 		showBlockPage(w, r, resp, user, response.Tally, response.Scores.data, response.Action)
-		logAccess(r, resp, 0, response.Modified, user, response.Tally, response.Scores.data, response.Action, response.PageTitle, response.Ignored, response.ClamdResponses())
+		logAccess(r, resp, 0, response.Modified, user, response.Tally, response.Scores.data, response.Action, response.PageTitle, response.Ignored)
 		return
 	case "block-invisible":
 		showInvisibleBlock(w)
-		logAccess(r, resp, 0, response.Modified, user, response.Tally, response.Scores.data, response.Action, response.PageTitle, response.Ignored, response.ClamdResponses())
+		logAccess(r, resp, 0, response.Modified, user, response.Tally, response.Scores.data, response.Action, response.PageTitle, response.Ignored)
 		return
 	}
 
@@ -448,7 +433,7 @@ func (h proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		log.Printf("error while copying response (URL: %s): %s", r.URL, err)
 	}
 
-	logAccess(r, resp, n, response.Modified, user, response.Tally, response.Scores.data, response.Action, response.PageTitle, response.Ignored, response.ClamdResponses())
+	logAccess(r, resp, n, response.Modified, user, response.Tally, response.Scores.data, response.Action, response.PageTitle, response.Ignored)
 }
 
 func filterRequest(req *Request, checkAuth bool) {
@@ -633,45 +618,6 @@ func (resp *Response) Thumbnail(maxSize int) []byte {
 		return nil
 	}
 	return b.Bytes()
-}
-
-func doVirusScan(response *Response) error {
-	content, err := response.Content(getConfig().MaxContentScanSize)
-	if err != nil {
-		return err
-	}
-	clam := getConfig().ClamAV
-	if content != nil {
-		response.clamResponses, err = clam.ScanReader(response.Request.Request.Context(), bytes.NewReader(content))
-		if err != nil {
-			log.Printf("Error doing virus scan on %v: %v", response.Request.Request.URL, err)
-		}
-		for _, res := range response.clamResponses {
-			if res.Status == "FOUND" {
-				log.Printf("Detected virus in %v: %s", response.Request.Request.URL, res.Signature)
-				response.Action = ACLActionRule{
-					Action: "block",
-					Needed: []string{"virus", res.Signature},
-				}
-			}
-		}
-	} else {
-		// Although the response is too long for synchronous virus scanning, scan it anyway,
-		// so that we can log the result.
-
-		// Make the channel buffered, so that sending won't block.
-		response.clamChan = make(chan []*clamd.Response, 1)
-		pr, pw := io.Pipe()
-		tr := io.TeeReader(response.Response.Body, pw)
-		response.Response.Body = pr
-		go func() {
-			cr, _ := clam.ScanReader(response.Request.Request.Context(), tr)
-			io.Copy(ioutil.Discard, tr)
-			pw.Close()
-			response.clamChan <- cr
-		}()
-	}
-	return nil
 }
 
 // copyResponseHeader writes resp's header and status code to w.
@@ -973,9 +919,6 @@ type Response struct {
 	// It is filled in by doPhraseScan.
 	PageTitle string
 
-	clamResponses []*clamd.Response
-	clamChan      chan []*clamd.Response
-
 	image image.Image
 
 	frozen bool
@@ -1187,19 +1130,6 @@ func (resp *Response) SetContent(data []byte, contentType string) {
 
 	resp.Response.ContentLength = int64(len(data))
 	resp.Response.Body = io.NopCloser(bytes.NewReader(data))
-}
-
-// ClamdResponses returns the results from ClamAV scanning, or nil if the
-// response was not scanned.
-func (resp *Response) ClamdResponses() []*clamd.Response {
-	if resp.clamResponses != nil {
-		return resp.clamResponses
-	}
-	if resp.clamChan != nil {
-		resp.clamResponses = <-resp.clamChan
-		return resp.clamResponses
-	}
-	return nil
 }
 
 func responseGetThumbnail(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
