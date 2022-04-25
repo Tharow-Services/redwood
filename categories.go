@@ -77,7 +77,7 @@ func (cf *config) loadBuildInCategories(dirName string, parent *category) error 
 
 	for _, fi := range info {
 		if name := fi.Name(); fi.IsDir() && name[0] != '.' && (selc.contains(name) || selc.contains("?all")) {
-			categoryPath := filepath.Join(dirName, name)
+			categoryPath := dirName + "/" + name
 			c, err := loadBuiltinCategory(categoryPath, parent)
 			if err != nil {
 				log.Printf("Error loading built-in category %s: %v", name, err)
@@ -86,7 +86,7 @@ func (cf *config) loadBuildInCategories(dirName string, parent *category) error 
 			cf.Categories[c.name] = c
 
 			// Load child categories.
-			err = cf.loadCategories(categoryPath, c)
+			err = cf.loadBuildInCategories(categoryPath, c)
 			if err != nil {
 				log.Printf("Error loading built-in child categories of %s: %v", c.name, err)
 			}
@@ -105,12 +105,11 @@ func loadBuiltinCategory(dirname string, parent *category) (c *category, err err
 		c.name = parent.name + "/" + c.name
 	}
 	c.description = c.name
-
-	confFile, err := BuiltInFS.ReadFile(filepath.Join(dirname, "category.conf"))
+	dir, _ := BuiltInFS.ReadDir(dirname)
+	confFile, err := BuiltInFS.ReadFile(dirname + "/category.conf")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("built-in fs: %s\n\n %s", err, dir)
 	}
-
 	conf := yaml.Config(string(confFile))
 	s, _ := conf.Get("description")
 	if s != "" {
@@ -131,14 +130,14 @@ func loadBuiltinCategory(dirname string, parent *category) (c *category, err err
 	case "":
 		// No-op.
 	default:
-		return nil, fmt.Errorf("unrecognized action %s in %s", s, confFile)
+		return nil, fmt.Errorf("unrecognized action %s in %s", s, dirname+".conf")
 	}
 
 	s, _ = conf.Get("invisible")
 	if s != "" {
 		c.invisible, err = strconv.ParseBool(strings.TrimSpace(s))
 		if err != nil {
-			log.Printf("Invalid setting for 'invisible' in %s: %q", confFile, s)
+			log.Printf("Invalid setting for 'invisible' in %s: %q", dirname+".conf", s)
 		}
 	}
 
@@ -150,17 +149,17 @@ func loadBuiltinCategory(dirname string, parent *category) (c *category, err err
 	}
 
 	//ruleFiles, err := filepath.Glob(filepath.Join(dirname, "*.list"))
-	ruleFiles, err := BuiltInFS.ReadDir(filepath.Join(dirname, "*.list"))
+	ruleFiles, err := BuiltInFS.ReadDir(dirname)
 	if err != nil {
 		return nil, fmt.Errorf("error listing built-in rule files: %v", err)
 	}
 	//sort.Strings(ruleFiles)
 
 	for _, list := range ruleFiles {
-		if list.IsDir() {
+		if list.IsDir() || strings.HasSuffix(list.Name(), ".list") {
 			continue
 		}
-		r, err := BuiltInFS.Open(filepath.Join(dirname, list.Name()))
+		r, err := BuiltInFS.Open(dirname + "/" + list.Name())
 		if err != nil {
 			log.Println(err)
 			continue
@@ -195,7 +194,7 @@ func loadBuiltinCategory(dirname string, parent *category) (c *category, err err
 			}
 		}
 	}
-	log.Printf("We Have Loaded Built-in Category: %s", c.description)
+	//log.Printf("We Have Loaded Built-in Category: %s", c.description)
 	return c, nil
 }
 

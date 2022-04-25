@@ -179,7 +179,7 @@ func loadConfiguration() (*config, error) {
 	c.flags.BoolVar(&c.LogUserAgent, "log-user-agent", false, "Include User-Agent header in access log.")
 	c.flags.IntVar(&c.MaxContentScanSize, "max-content-scan-size", 1e6, "maximum size (in bytes) of page to do content scan on")
 	c.newActiveFlag("pac-template", "", "path to template for PAC file (%s will be replaced by proxy host:port)", c.loadPACTemplate)
-	c.newActiveFlag("password-file", "Internal", "path to file of usernames and passwords", c.readPasswordFile)
+	c.newActiveFlag("password-file", "internal", "path to file of usernames and passwords", c.readPasswordFile)
 	c.flags.StringVar(&c.PIDFile, "pidfile", "", "path of file to store process ID")
 	c.newActiveFlag("query-changes", "", "path to config file for modifying URL query strings", c.loadQueryConfig)
 	c.newActiveFlag("request-acl-script", "", "script to assign ACLs to requests", c.loadRequestACLScript)
@@ -400,7 +400,7 @@ func (c *config) newActiveFlag(name, value, usage string, f func(string) error) 
 }
 
 func (c *config) stringListFlag(name, value, usage string, list *[]string) flag.Value {
-	return c.newActiveFlag(name, value, usage, func(s string) error {
+	return c.newActiveFlag(name, "", usage, func(s string) error {
 		*list = append(*list, s)
 		return nil
 	})

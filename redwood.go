@@ -21,7 +21,7 @@ import (
 var Version string = "Version 1.1.3-SNAPSHOT"
 
 // Built-in Categories
-//go:embed built-in
+//go:embed built-in built-in/categories/*
 var BuiltInFS embed.FS
 
 // Built-in directory name
@@ -99,6 +99,11 @@ func main() {
 
 	conf.openPerUserPorts()
 	portsListening += len(conf.CustomPorts)
+	log.Print("Redwood Proxy Has finished loading")
+	log.Print("Loaded Categories: ")
+	for k, c := range conf.Categories {
+		log.Printf("%s as %s", k, c.description)
+	}
 
 	if portsListening > 0 {
 		// Wait forever (or until somebody calls log.Fatal).
