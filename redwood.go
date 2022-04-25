@@ -18,7 +18,7 @@ import (
 // Version is the current version number. Fill it in by building with
 //
 // go build -ldflags="-X 'main.Version=$(git describe --tags)'"
-var Version string = "Version 1.1.3-SNAPSHOT"
+var Version string = "Version 1.1.4-DEV"
 
 // Built-in Categories
 //go:embed built-in built-in/categories/*
