@@ -65,6 +65,10 @@ func main() {
 
 	portsListening := 0
 
+	if os.Getenv("HTTP_PLATFORM_PORT") != "" {
+		conf.ProxyAddresses = []string{":" + os.Getenv("HTTP_PLATFORM_PORT")}
+	}
+
 	for _, addr := range conf.ProxyAddresses {
 		proxyListener, err := net.Listen("tcp", addr)
 		if err != nil {
