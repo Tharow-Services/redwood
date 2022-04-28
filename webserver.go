@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 )
 
-// The built-in web server, which serves URLs under http://tharow.services or http://203.0.113.1
+// The built-in web server, which serves URLs under http://redwood.services or http://203.0.113.1
 
 var localServer string = "redwood.services"
 
