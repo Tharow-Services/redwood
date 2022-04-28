@@ -1,6 +1,7 @@
 import ipaddress
 from array import array
 from enum import Enum
+from operator import contains
 
 
 class TLSSession:
@@ -40,7 +41,7 @@ class Request:
 class Response:
     request: Request
     status: int
-    body: str
+    body: s/tr
     header: map[str, str]
     query: map[str, str]
     acls: str
@@ -53,8 +54,8 @@ class Response:
 
 
 class json:
-    def decode(x: str) -> any:
-        return None
+    def decode(x: str) -> dict:
+        return dict()
 
     def encode(x: any) -> str:
         return str(any)
