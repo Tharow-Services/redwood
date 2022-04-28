@@ -126,6 +126,8 @@ func (h proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if u, ok := getConfig().IPToUser[client]; ok {
 		authUser = u
+	} else {
+		authUser = "Anonymous"
 	}
 
 	// Reconstruct the URL if it is incomplete (i.e. on a transparent proxy).
