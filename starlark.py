@@ -2,7 +2,7 @@ import ipaddress
 from array import array
 from enum import Enum
 from operator import contains
-
+from pickletools import uint8
 
 class TLSSession:
     client_ip: str
@@ -41,7 +41,7 @@ class Request:
 class Response:
     request: Request
     status: int
-    body: s/tr
+    body: str
     header: map[str, str]
     query: map[str, str]
     acls: str

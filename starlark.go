@@ -85,6 +85,8 @@ func (c *config) loadStarlarkScripts() {
 	thread.Load = repl.MakeLoad()
 
 	for _, script := range c.StarlarkScripts {
+		log.Printf("Preloading Starlark Script: %s", script)
+		
 		defs, err := starlark.ExecFile(thread, script, nil, nil)
 		if err != nil {
 			log.Printf("Error loading starlark script %s:\n%s", script, formatStarlarkError(err))

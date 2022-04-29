@@ -1,5 +1,39 @@
-# from starlark_types import *
+# from starlark import *
 
+schoologySettings = """function reconfig(x) {
+  //x = window.siteNavigationUiProps.props;    
+  x.notifications.maxAllowedEnrollments = 150;
+  x.courses.showCreateCourse=false;
+  x.courses.showJoinCourse=true;
+  x.groups.showCreateGroup=false;
+  x.groups.showJoinGroup=true;
+  x.messages.canSend=true;
+  x.messages.canReceive=true;
+  x.tools.showUserManagement=true;
+  x.tools.showSchoolManagement=true;
+  x.tools.showImportExport=true;
+  x.tools.showAdvisorDashboard=true;
+  x.tools.showSchoolAnalytics=true;
+  x.tools.schoologyAdminTools.showSgyManager=true;
+  x.tools.schoologyAdminTools.showDemoSchools=true;
+  x.tools.schoologyAdminTools.showServerInfo=true;
+  x.tools.schoologyAdminTools.showSgyLookup=true;
+  x.tools.schoologyAdminTools.showEmptyCache=true;
+  x.amp.showAssessmentTeams=true;
+  x.amp.showAssessmentReports=true;
+  x.apps.showAppCenterLink=true;      
+  x.grades.showGradeReport=true;
+  x.grades.showMastery=true;
+  x.grades.showAttendance=true;
+  x.user.isBasicInstructor=true;
+  x.user.isBasicNonFacultyUser=false;
+  x.user.blogSubscriptionStatus=false;
+  x.enablePdsNavigation=false;
+  x.isDetailLayout=true;
+  return x
+}"""
+
+pendoDisable = r"(function(){if(window._initPendo){return;}window._initPendo=function(v,a,k){if(window._pendoInitialized){return;}window._pendoInitialized=true;}})();"
 
 def ssl_bump(session):
     # type: (TLSSession) -> TLSSession
@@ -9,7 +43,8 @@ def ssl_bump(session):
     if session.sni in ("www.opendns.com", "opendns.com"):
         print("Public Open DNS Site")
         session.server_addr = "www.tharow.net:443"
-
+    #if session.sni in ("ui.schoology.com"):
+    #    session.server_addr = "static.tharow.net:443"    
     return session
 
 def filter_request(request):
@@ -18,6 +53,11 @@ def filter_request(request):
         if request.host == "utica.schoology.com":
             if request.path == "/usage/collect":
                 request.action = "block"
+    if request.method == "GET":
+        if request.host in ("ustats-app.schoology.com", "ustats-cdn.schoology.com"):
+            if not request.path.startswith("/launcherBadge_custom"):
+                print("blocked schoology ustats-app with path: " + request.path)
+                request.path = "/null.js"
     return request
 
 def filter_response(response):
@@ -32,16 +72,47 @@ def filter_response(response):
         if response.request.host == "ustats-app.schoology.com":
             return schoology_ustats_app(response)
         if response.request.host == "meetlookup.com":
-            print("meetlookup called" + response.request.path)
+            #print("meetlookup called" + response.request.path)
             return meetlookup(response)
         if response.request.host == "1637314617.rsc.cdn77.org":
             return meetlookup(response)
+        if response.request.host in ("ui.schoology.com"):
+            return uiSchoology(response)
+        if response.request.host in ("ustats-app.schoology.com", "ustats-cdn.schoology.com"):
+            if not response.request.path.startswith("/launcherBadge_custom"):
+                print("blocked schoology ustats-app with path: " + response.request.path)
+                return silent_block(response=response, contentType="text/javascript")
+        if response.request.host in ("assets-cdn.schoology.com"):
+            if response.request.path.startswith("/assets/drupal-js-files/pendo_"):
+                return silent_block(response=response, contentType="text/javascript", body=pendoDisable)
     if response.request.method == "POST":
         if response.request.host == "utica.schoology.com":
             if response.request.path == "/usage/collect":
                 response.status = 200
                 response.body = ""
                 
+    return response
+
+# B=R.props
+
+def silent_block(response, contentType="", body="", accessControl=True, status=200): 
+    # type: (Response, str, str, bool, uint8) -> Response
+    response.status = status
+    if accessControl:
+        response.header["Access-Control-Allow-Origin"] = "*"
+    if contentType != "":
+        response.header['Content-Type'] = contentType
+    response.body = body
+    return response
+
+def uiSchoology(response):
+    # type: (Response) -> Response
+    print(r"B=reconfig(R.props)")
+    if response.request.path in ("/platform/site-navigation-ui/bundle.0.161.1.js"):
+        print("injecting schoology reconfig loader")
+        response.body = schoologySettings + "\n" + response.body.replace(r"B=R.props", r"B=reconfig(R.props)")
+    if response.request.path in ("/platform/reorder-ui/bundle.0.1.1.js"):
+        print("schoology reorder ui was requested")
     return response
 
 def domainlist(response):
