@@ -12,7 +12,7 @@ import (
 
 // Functions for modifying URL query strings
 
-func (c *config) loadQueryConfig(filename string) error {
+func (conf *config) loadQueryConfig(filename string) error {
 	f, err := os.Open(filename)
 	if err != nil {
 		return fmt.Errorf("could not open %s: %s\n", filename, err)
@@ -52,15 +52,15 @@ func (c *config) loadQueryConfig(filename string) error {
 			continue
 		}
 
-		c.QueryMatcher.AddRule(r)
-		if changes, ok := c.QueryChanges[r]; ok {
+		conf.QueryMatcher.AddRule(r)
+		if changes, ok := conf.QueryChanges[r]; ok {
 			// Merge the new values into the old ones.
 			for k, v := range values {
 				changes[k] = v
 			}
-			c.QueryChanges[r] = changes
+			conf.QueryChanges[r] = changes
 		} else {
-			c.QueryChanges[r] = values
+			conf.QueryChanges[r] = values
 		}
 	}
 
@@ -69,8 +69,8 @@ func (c *config) loadQueryConfig(filename string) error {
 
 // changeQuery checks the URL to see if it is a site that is calling for
 // query changes. If so, it modifies the URL and returns true.
-func (c *config) changeQuery(URL *url.URL) (changed bool) {
-	matches := c.QueryMatcher.MatchingRules(URL)
+func (conf *config) changeQuery(URL *url.URL) (changed bool) {
+	matches := conf.QueryMatcher.MatchingRules(URL)
 	if len(matches) == 0 {
 		return false
 	}
@@ -78,7 +78,7 @@ func (c *config) changeQuery(URL *url.URL) (changed bool) {
 	values := URL.Query()
 
 	for urlRule := range matches {
-		newValues := c.QueryChanges[urlRule]
+		newValues := conf.QueryChanges[urlRule]
 		for k, v := range newValues {
 			values[k] = v
 		}

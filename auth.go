@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -18,27 +17,17 @@ import (
 
 // HTTP proxy authentication.
 
-func (c *config) readPasswordFile(filename string) error {
-	var f io.Reader
-	switch strings.ToLower(filename) {
-	case "interal":
-		{
-			f, err := BuiltInFS.Open("built-in/redwood.users")
-			if err != nil {
-				return fmt.Errorf("could not open interal file %s: %s", filename, err)
-			}
-			f.Close()
-			break
-		}
-	default:
-		{
-			f, err := os.Open(filename)
-			if err != nil {
-				return fmt.Errorf("could not open %s: %s", filename, err)
-			}
-			defer f.Close()
-		}
+func (conf *config) readPasswordFile(filename string) error {
+	f, err := os.Open(filename)
+	if err != nil {
+		return fmt.Errorf("could not open %s: %s", filename, err)
 	}
+	defer func(f *os.File) {
+		err := f.Close()
+		if err != nil {
+			log.Print(fmt.Errorf("could not close %s: %s", filename, err))
+		}
+	}(f)
 
 	cr := newConfigReader(f)
 
@@ -52,49 +41,49 @@ func (c *config) readPasswordFile(filename string) error {
 
 		switch len(words) {
 		case 2:
-			c.Passwords[words[0]] = words[1]
+			conf.Passwords[words[0]] = words[1]
 
 		case 3:
 			user, pass, portStr := words[0], words[1], words[2]
-			c.Passwords[user] = pass
+			conf.Passwords[user] = pass
 			port, err := strconv.Atoi(portStr)
 			if err != nil {
 				log.Printf("invalid port number %q in password file line: %s", portStr, line)
 				continue
 			}
-			c.CustomPorts[user] = customPortInfo{
+			conf.CustomPorts[user] = customPortInfo{
 				Port: port,
 			}
-			c.UserForPort[port] = user
+			conf.UserForPort[port] = user
 
 		case 4:
 			user, pass, portStr, clientPlatform := words[0], words[1], words[2], words[3]
-			c.Passwords[user] = pass
+			conf.Passwords[user] = pass
 			port, err := strconv.Atoi(portStr)
 			if err != nil {
 				log.Printf("invalid port number %q in password file line: %s", portStr, line)
 				continue
 			}
-			c.CustomPorts[user] = customPortInfo{
+			conf.CustomPorts[user] = customPortInfo{
 				Port:           port,
 				ClientPlatform: clientPlatform,
 			}
-			c.UserForPort[port] = user
+			conf.UserForPort[port] = user
 
 		case 5:
 			user, pass, portStr, clientPlatform, networks := words[0], words[1], words[2], words[3], words[4]
-			c.Passwords[user] = pass
+			conf.Passwords[user] = pass
 			port, err := strconv.Atoi(portStr)
 			if err != nil {
 				log.Printf("invalid port number %q in password file line: %s", portStr, line)
 				continue
 			}
-			c.CustomPorts[user] = customPortInfo{
+			conf.CustomPorts[user] = customPortInfo{
 				Port:             port,
 				ClientPlatform:   clientPlatform,
 				ExpectedNetworks: strings.Split(networks, ","),
 			}
-			c.UserForPort[port] = user
+			conf.UserForPort[port] = user
 
 		default:
 			log.Println("malformed line in password file:", line)
@@ -219,7 +208,7 @@ func (conf *config) addHTTPAuthenticator(endpoint string) error {
 	return nil
 }
 
-func (c *config) loadIPToUser(filename string) error {
+func (conf *config) loadIPToUser(filename string) error {
 	f, err := os.Open(filename)
 	if err != nil {
 		return fmt.Errorf("could not open %s: %s", filename, err)
@@ -243,7 +232,7 @@ func (c *config) loadIPToUser(filename string) error {
 			continue
 		}
 
-		c.IPToUser[fields[0]] = fields[1]
+		conf.IPToUser[fields[0]] = fields[1]
 	}
 
 	return s.Err()

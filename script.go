@@ -1,123 +1,151 @@
 package main
 
 import (
-	"bytes"
-	"errors"
 	"fmt"
-	"io"
-	"io/ioutil"
-	"net"
-	"net/http"
-
-	"github.com/dop251/goja"
-	"github.com/dop251/goja_nodejs/console"
-	"github.com/dop251/goja_nodejs/require"
-	"github.com/miekg/dns"
+	"log"
+	"strings"
 )
 
-// loadScript loads and compiles a JavaScript file.
-func loadScript(filename string) (*goja.Program, error) {
-	b, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return nil, err
-	}
-
-	return goja.Compile(filename, string(b), true)
+type Scripting interface {
+	SSLBump(session *TLSSession) *TLSSession
+	FilterRequest(request *Request) *Request
+	FilterResponse(response *Response) *Response
+	Hosts() []string
+	Name() string
+	Description() string
 }
 
-func (c *config) loadRequestACLScript(filename string) error {
-	p, err := loadScript(filename)
-	if err != nil {
-		return err
-	}
+// Script blank simple script
+type Script struct{ Scripting }
 
-	c.ACLs.RequestScripts = append(c.ACLs.RequestScripts, p)
-	return nil
+func (Script) SSLBump(session *TLSSession) *TLSSession     { return session }
+func (Script) FilterRequest(request *Request) *Request     { return request }
+func (Script) FilterResponse(response *Response) *Response { return response }
+func (Script) Hosts() []string                             { return []string{} }
+func (Script) Name() string                                { return "Default" }
+func (Script) Description() string                         { return "Default" }
+
+// ScriptHandler a blank example script handler
+type ScriptHandler struct{ Scripting }
+
+func (ScriptHandler) SSLBump(session *TLSSession) *TLSSession     { return session }
+func (ScriptHandler) FilterRequest(request *Request) *Request     { return request }
+func (ScriptHandler) FilterResponse(response *Response) *Response { return response }
+func (ScriptHandler) Hosts() []string                             { return []string{} }
+func (ScriptHandler) Name() string                                { return "Default" }
+func (ScriptHandler) Description() string                         { return "Default" }
+
+var Scripts = []Scripting{
+	ExampleScript{},
+}
+var ScriptHandlers = []Scripting{
+	ExampleHandler{},
 }
 
-func (c *config) loadResponseACLScript(filename string) error {
-	p, err := loadScript(filename)
-	if err != nil {
-		return err
-	}
+type ScriptingHandler ScriptHandler
 
-	c.ACLs.ResponseScripts = append(c.ACLs.ResponseScripts, p)
-	return nil
+func CheckScripts() {
+	log.Print("Running Script Handler Init, Checking Scripts")
+	for _, script := range Scripts {
+		CheckScript(script)
+	}
+	log.Print("All Scripts Have Passed Checking Script Handlers")
+	for _, handler := range ScriptHandlers {
+		CheckScript(handler)
+	}
+	log.Print("All Script Handlers Have Passed")
 }
 
-// jsRuntime returns a new JavaScript runtime, with some useful global
-// variables and functions defined.
-func jsRuntime() *goja.Runtime {
-	rt := goja.New()
-	rt.Set("lookupHost", lookupHost)
-	rt.Set("httpClient", new(http.Client))
-	rt.Set("copyBody", copyBody)
-	new(require.Registry).Enable(rt)
-	console.Enable(rt)
-	return rt
+func (h ScriptingHandler) SSLBump(session *TLSSession) *TLSSession {
+	// Find the first Script able to process host
+	var sec = h.SelectScript(session.SNI)
+	// run script
+	session = sec.SSLBump(session)
+	for _, handler := range h.SelectHandlers() {
+		session = handler.SSLBump(session)
+	}
+	return session
 }
 
-func lookupHost(args ...string) (string, error) {
-	if len(args) == 0 {
-		return "", errors.New("lookupHost needs 1 or 2 parameters: the hostname, and optionally the DNS server")
-	}
+func (h ScriptingHandler) FilterRequest(request *Request) *Request {
+	return request
+}
+func (h ScriptingHandler) FilterResponse(response *Response) *Response {
+	return response
+}
+func (h ScriptingHandler) Hosts() []string {
+	return []string{}
+}
 
-	host := args[0]
+func (h ScriptingHandler) Name() string {
+	return "Root Handler"
+}
 
-	if len(args) == 1 {
-		addrs, err := net.LookupHost(host)
-		if err != nil {
-			return "", err
+func (h ScriptingHandler) Description() string {
+	return "The Root Script Handler for redwood proxy"
+}
+
+// Script Handler Functions
+
+func (h ScriptingHandler) SelectHandlers() []Scripting {
+	var setS stringSet = getConfig().EnabledScriptHandlers
+	var ret []Scripting
+	for _, handler := range ScriptHandlers {
+		if !setS.contains(handler.Name()) {
+			continue
 		}
-		if len(addrs) == 0 {
-			return "", nil
-		}
-		return addrs[0], nil
+		//if !MatchHost(script.Hosts(), host) {continue}
+		ret = append(ret, handler)
 	}
-
-	host = dns.Fqdn(host)
-	server := args[1]
-
-	m := new(dns.Msg)
-	m.SetQuestion(host, dns.TypeA)
-	resp, err := dns.Exchange(m, net.JoinHostPort(server, "53"))
-	if err != nil {
-		return "", err
+	if len(ret) == 0 {
+		ret = append(ret, ScriptHandler{})
 	}
-
-	for _, a := range resp.Answer {
-		if a, ok := a.(*dns.A); ok {
-			return a.A.String(), nil
-		}
-	}
-
-	return "", nil
+	return ret
 }
 
-// copyBody returns a copy of the body of an http.Request or http.Response.
-func copyBody(r interface{}) (io.ReadCloser, error) {
-	var originalBody io.ReadCloser
-	switch r := r.(type) {
-	case *http.Request:
-		originalBody = r.Body
-	case *http.Response:
-		originalBody = r.Body
-	default:
-		return nil, fmt.Errorf("unsupported type (%T) for copyBody", r)
+func (h ScriptingHandler) SelectScript(host string) Scripting {
+	var setS stringSet = getConfig().EnabledScripts
+	for _, script := range Scripts {
+		if !setS.contains(script.Name()) {
+			continue
+		}
+		if !MatchHost(script.Hosts(), host) {
+			continue
+		}
+		return script
 	}
+	return Script{}
+}
 
-	content, err := ioutil.ReadAll(originalBody)
-	if err != nil {
-		return nil, err
+func MatchHost(hosts stringSet, host string) bool {
+	// if enabled host list for script returns nil
+	// interpret as it being disabled
+	if hosts == nil {
+		return false
 	}
-
-	newBody := ioutil.NopCloser(bytes.NewReader(content))
-	switch r := r.(type) {
-	case *http.Request:
-		r.Body = newBody
-	case *http.Response:
-		r.Body = newBody
+	if len(hosts) == 1 {
+		return strings.HasSuffix(host, hosts[0])
 	}
+	return hosts.contains(host)
+}
 
-	return ioutil.NopCloser(bytes.NewReader(content)), nil
+func CheckScript(s Scripting) {
+	var doPanic bool
+	var err = "unrecoverable error"
+	var str = "scripting handler: script:[%s] has invalid configuration: "
+	if s.Name() == "" {
+		str += "Name() returned blank,"
+		doPanic = true
+	}
+	if len(s.Hosts()) == 0 {
+		str += "Hosts() returned []string{}: this configuration is reserved for the Root Script Handler,"
+		doPanic = true
+	}
+	if len(s.Hosts()) == 1 && s.Hosts()[0] == "" {
+		str += "Hosts() returned []string{\"\"}: host catch all is not allowed please use ScriptingHandler.RegisterHandler(Scripting), "
+		doPanic = true
+	}
+	if doPanic {
+		panic(fmt.Errorf(str+err, s.Name()))
+	}
 }

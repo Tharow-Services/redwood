@@ -4,7 +4,7 @@ require (
 	github.com/andybalholm/brotli v1.0.4
 	github.com/andybalholm/cascadia v1.3.1
 	github.com/andybalholm/dhash v1.0.0
-	github.com/dop251/goja v0.0.0-20220408131256-ffe77e20c6f1
+	github.com/dop251/goja v0.0.0-20220430115111-e1f9dc0755e7
 	github.com/dop251/goja_nodejs v0.0.0-20211022123610-8dd9abb0616d
 	github.com/golang/gddo v0.0.0-20210115222349-20d68f94ee1f
 	github.com/klauspost/compress v1.15.1

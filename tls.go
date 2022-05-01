@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/andybalholm/redwood/efs"
 	"io"
 	"io/ioutil"
 	"log"
@@ -34,68 +35,26 @@ import (
 
 // loadCertificate loads the TLS certificate specified by certFile and keyFile
 // into tlsCert.
-
-// if we're Interal Mode read file from differnt places
-func (c *config) loadCertificate() {
-	if c.CertFile != "" && c.KeyFile != "" {
-		cert, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
+func (conf *config) loadCertificate() {
+	if conf.CertFile != "" && conf.KeyFile != "" {
+		cert, err := efs.LoadX509KeyPair(conf.CertFile, conf.KeyFile)
 		if err != nil {
 			log.Println("Error loading TLS certificate:", err)
 			return
 		}
-		c.TLSCert = cert
+		conf.TLSCert = cert
 		parsed, err := x509.ParseCertificate(cert.Certificate[0])
 		if err != nil {
 			log.Println("Error parsing X509 certificate:", err)
 			return
 		}
-		c.ParsedTLSCert = parsed
-		c.TLSReady = true
+		conf.ParsedTLSCert = parsed
+		conf.TLSReady = true
 
-		c.ServeMux.HandleFunc("/cert.der", func(w http.ResponseWriter, r *http.Request) {
-			tlsCert := c.TLSCert
+		conf.ServeMux.HandleFunc("/cert.der", func(w http.ResponseWriter, r *http.Request) {
+			tlsCert := conf.TLSCert
 			w.Header().Set("Content-Type", "application/x-x509-ca-cert")
 			w.Write(tlsCert.Certificate[len(tlsCert.Certificate)-1])
-		})
-	} else if c.InteralTls {
-		ic, err := BuiltInFS.ReadFile("built-in/tls.cer")
-		if err != nil {
-			log.Println("Error loading TLS certificate:", fmt.Errorf("built-in fs: %s", err))
-			return
-		}
-		ik, err := BuiltInFS.ReadFile("built-in/tls.key")
-		if err != nil {
-			log.Println("Error loading TLS certificate:", fmt.Errorf("built-in fs: %s", err))
-			return
-		}
-		cert, err := tls.X509KeyPair(ic, ik)
-		if err != nil {
-			log.Println("Error loading TLS certificate:", err)
-			return
-		}
-		c.TLSCert = cert
-		parsed, err := x509.ParseCertificate(cert.Certificate[0])
-		if err != nil {
-			log.Println("Error parsing X509 certificate:", err)
-			return
-		}
-		c.ParsedTLSCert = parsed
-		c.TLSReady = true
-
-		c.ServeMux.HandleFunc("/cert.der", func(w http.ResponseWriter, r *http.Request) {
-			tlsCert := c.TLSCert
-			w.Header().Set("Content-Type", "application/x-x509-ca-cert")
-			w.Write(tlsCert.Certificate[len(tlsCert.Certificate)-1])
-		})
-		c.ServeMux.HandleFunc("/root-ca.cer", func(w http.ResponseWriter, r *http.Request) {
-			ik, err := BuiltInFS.ReadFile("built-in/tls-root.key")
-			if err != nil {
-				log.Println("Error serving root ca certificate:", err)
-				w.WriteHeader(500)
-				return
-			}
-			w.Header().Set("Content-Type", "application/x-x509-ca-cert")
-			w.Write(ik)
 		})
 	}
 }
@@ -152,7 +111,7 @@ func SSLBump(conn net.Conn, serverAddr, user, authUser string, r *http.Request) 
 			buf := make([]byte, 4096)
 			buf = buf[:runtime.Stack(buf, false)]
 			log.Printf("SSLBump: panic serving connection to %s: %v\n%s", serverAddr, err, buf)
-			conn.Close()
+			Lce(conn.Close())
 		}
 	}()
 
@@ -174,14 +133,14 @@ func SSLBump(conn net.Conn, serverAddr, user, authUser string, r *http.Request) 
 	// just the address).
 	clientHello, err := readClientHello(conn)
 	if err != nil {
-		logTLS(user, serverAddr, "", fmt.Errorf("error reading client hello: %v", err), false, "")
+		session.Errorf("error reading client hello: %v", err, false, "")
 		if _, ok := err.(net.Error); ok {
-			conn.Close()
+			Lce(conn.Close())
 			return
 		} else if err == ErrObsoleteSSLVersion {
 			obsoleteVersion = true
 			if getConfig().BlockObsoleteSSL {
-				conn.Close()
+				Lce(conn.Close())
 				return
 			}
 		} else if err == ErrInvalidSSL {
@@ -190,11 +149,11 @@ func SSLBump(conn net.Conn, serverAddr, user, authUser string, r *http.Request) 
 				// This is a real CONNECT request, not an intercepted connection.
 				// Since we don't want remote users to do things like CONNECT to port 22 on
 				// a host behind our firewall, we'll block it without even checking the ACLs.
-				conn.Close()
+				Lce(conn.Close())
 				return
 			}
 		} else {
-			conn.Close()
+			Lce(conn.Close())
 			return
 		}
 	}
@@ -230,8 +189,8 @@ func SSLBump(conn net.Conn, serverAddr, user, authUser string, r *http.Request) 
 	}
 
 	if serverName == "" {
-		logTLS(user, "", "", errors.New("no SNI available"), false, "")
-		conn.Close()
+		session.Error(errors.New("no SNI available"), false, "")
+		Lce(conn.Close())
 		return
 	}
 
@@ -275,6 +234,8 @@ func SSLBump(conn net.Conn, serverAddr, user, authUser string, r *http.Request) 
 	}
 
 	callStarlarkFunctions("ssl_bump", session)
+
+	session = getConfig().RootScriptHandler.SSLBump(session)
 
 	dialer := &net.Dialer{
 		Timeout:   30 * time.Second,
@@ -402,7 +363,10 @@ func SSLBump(conn net.Conn, serverAddr, user, authUser string, r *http.Request) 
 		cert, err = fakeCertificate(session.SNI)
 		if err != nil {
 			logTLS(user, session.ServerAddr, serverName, fmt.Errorf("error generating certificate: %v", err), false, tlsFingerprint)
-			conn.Close()
+			err = conn.Close()
+			if err != nil {
+				log.Print(fmt.Errorf("error generating certificate: unable to close connection: %s", err))
+			}
 			return
 		}
 		rt = httpTransport
@@ -416,8 +380,7 @@ func SSLBump(conn net.Conn, serverAddr, user, authUser string, r *http.Request) 
 		rt:             rt,
 	}
 	tlsConfig := &tls.Config{
-		Certificates:             []tls.Certificate{cert, getConfig().TLSCert},
-		PreferServerCipherSuites: true,
+		Certificates: []tls.Certificate{cert, getConfig().TLSCert},
 		CurvePreferences: []tls.CurveID{
 			tls.CurveP256,
 			tls.X25519, // Go 1.8 only
@@ -433,14 +396,20 @@ func SSLBump(conn net.Conn, serverAddr, user, authUser string, r *http.Request) 
 	err = tlsConn.Handshake()
 	if err != nil {
 		logTLS(user, session.ServerAddr, serverName, fmt.Errorf("error in handshake with client: %v", err), false, tlsFingerprint)
-		conn.Close()
+		err := conn.Close()
+		if err != nil {
+			logTLS(user, session.ServerAddr, serverName, fmt.Errorf("error in handshake with client: unable to close connection: %s", err), false, tlsFingerprint)
+		}
 		return
 	}
 
 	logTLS(user, session.ServerAddr, serverName, nil, false, tlsFingerprint)
 
 	if http2Downstream {
-		http2.ConfigureServer(server, nil)
+		err := http2.ConfigureServer(server, nil)
+		if err != nil {
+			logTLS(user, session.ServerAddr, serverName, fmt.Errorf("error in http2Downstream configuration: %s", err), false, tlsFingerprint)
+		}
 	}
 	listener := &singleListener{conn: tlsConn}
 	server.Serve(listener)
@@ -640,7 +609,10 @@ func (s *singleListener) Accept() (net.Conn, error) {
 
 func (s *singleListener) Close() error {
 	s.once.Do(func() {
-		s.conn.Close()
+		err := s.conn.Close()
+		if err != nil {
+			log.Print(fmt.Errorf("tls single listener: unable to close connection: %s", err))
+		}
 	})
 	return nil
 }
@@ -661,7 +633,10 @@ func imitateCertificate(serverCert *x509.Certificate, selfSigned bool, sni strin
 		h.Write(c)
 	}
 	if sni != "" {
-		io.WriteString(h, sni)
+		_, err = io.WriteString(h, sni)
+		if err != nil {
+			log.Print(fmt.Errorf("tls: imitate certificate unable to write SNI string: %s", err))
+		}
 	}
 
 	template := &x509.Certificate{
@@ -780,7 +755,12 @@ func validCert(cert *x509.Certificate, intermediates []*x509.Certificate) bool {
 		}
 		resp, err := http.Get(certURL)
 		if err == nil {
-			defer resp.Body.Close()
+			defer func(Body io.ReadCloser) {
+				err := Body.Close()
+				if err != nil {
+					log.Printf("unable to close issuing certificate url: %s", err)
+				}
+			}(resp.Body)
 		}
 		if err != nil || resp.StatusCode != 200 {
 			continue
@@ -837,8 +817,10 @@ var ErrObsoleteSSLVersion = errors.New("obsolete SSL protocol version")
 var ErrInvalidSSL = errors.New("invalid first byte for SSL connection; possibly some other protocol")
 
 func readClientHello(conn net.Conn) (hello []byte, err error) {
-	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
-	defer conn.SetReadDeadline(time.Time{})
+	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	defer func(conn net.Conn, t time.Time) {
+		_ = conn.SetReadDeadline(t)
+	}(conn, time.Time{})
 
 	var header [5]byte
 	n, err := io.ReadFull(conn, header[:])
@@ -871,7 +853,7 @@ func readClientHello(conn net.Conn) (hello []byte, err error) {
 		return hello, err
 	}
 	if protocolData[0] != 1 {
-		return hello, fmt.Errorf("Expected message type 1 (ClientHello), got %d", protocolData[0])
+		return hello, fmt.Errorf("expected message type 1 (ClientHello), got %d", protocolData[0])
 	}
 	protocolLen := int(protocolData[1])<<16 | int(protocolData[2])<<8 | int(protocolData[3])
 	if protocolLen != recordLen-4 {
@@ -896,7 +878,7 @@ func parseClientHello(data []byte) (*tls.ClientHelloInfo, error) {
 
 	var sessionID cryptobyte.String
 	if !s.ReadUint8LengthPrefixed(&sessionID) {
-		return nil, errors.New("bad session ID")
+		return nil, errors.New("bad session id")
 	}
 
 	var cipherSuites cryptobyte.String
@@ -953,12 +935,12 @@ func parseClientHello(data []byte) (*tls.ClientHelloInfo, error) {
 		case 16: // ALPN
 			var protoList cryptobyte.String
 			if !extData.ReadUint16LengthPrefixed(&protoList) || protoList.Empty() {
-				return nil, errors.New("bad ALPN protocol list")
+				return nil, errors.New("bad alpn protocol list")
 			}
 			for !protoList.Empty() {
 				var proto cryptobyte.String
 				if !protoList.ReadUint8LengthPrefixed(&proto) || proto.Empty() {
-					return nil, errors.New("bad ALPN protocol list entry")
+					return nil, errors.New("bad alpn protocol list entry")
 				}
 				info.SupportedProtos = append(info.SupportedProtos, string(proto))
 			}
@@ -976,17 +958,17 @@ func parseClientHello(data []byte) (*tls.ClientHelloInfo, error) {
 	return &info, nil
 }
 
-func (c *config) addTrustedRoots(certPath string) error {
-	if c.ExtraRootCerts == nil {
-		c.ExtraRootCerts = x509.NewCertPool()
+func (conf *config) addTrustedRoots(certPath string) error {
+	if conf.ExtraRootCerts == nil {
+		conf.ExtraRootCerts = x509.NewCertPool()
 	}
 
-	pem, err := ioutil.ReadFile(certPath)
+	cPem, err := ioutil.ReadFile(certPath)
 	if err != nil {
 		return err
 	}
 
-	if !c.ExtraRootCerts.AppendCertsFromPEM(pem) {
+	if !conf.ExtraRootCerts.AppendCertsFromPEM(cPem) {
 		return fmt.Errorf("no certificates found in %s", certPath)
 	}
 	return nil

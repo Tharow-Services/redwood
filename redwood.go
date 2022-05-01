@@ -4,34 +4,25 @@
 package main
 
 import (
-	"embed"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
 // Version is the current version number. Fill it in by building with
 //
 // go build -ldflags="-X 'main.Version=$(git describe --tags)'"
-var Version string = "Version 1.1.52"
-
-// Built-in Categories
-//go:embed built-in built-in/categories/*
-var BuiltInFS embed.FS
-
-// Built-in directory name
-const BuiltinDir = "built-in/"
+var Version string
 
 func main() {
 	if Version != "" {
-		log.Println("Redwood", Version)
+		Version = "Version Unknown"
 	}
-
+	log.Println("Redwood", Version)
 	conf, err := loadConfiguration()
 	if err != nil {
 		log.Fatal(err)
@@ -45,7 +36,7 @@ func main() {
 
 	accessLog.Open(conf.AccessLog)
 	tlsLog.Open(conf.TLSLog)
-	contentLog.Open(filepath.Join(conf.ContentLogDir, "redwood.index.csv"))
+	contentLog.Open(conf.ContentLog)
 	starlarkLog.Open(conf.StarlarkLog)
 
 	if conf.PIDFile != "" {
@@ -87,6 +78,7 @@ func main() {
 			if err != nil && !strings.Contains(err.Error(), "use of closed") {
 				log.Fatalln("Error running HTTP proxy:", err)
 			}
+			log.Println("Started Proxy Service On: tcp:", addr)
 		}()
 		portsListening++
 	}
@@ -103,18 +95,14 @@ func main() {
 
 	conf.openPerUserPorts()
 	portsListening += len(conf.CustomPorts)
-	log.Print("Redwood Proxy Has finished loading")
 	log.Print("Loaded Categories: ")
 	for k, c := range conf.Categories {
 		log.Printf("%s as %s", k, c.description)
 	}
+	log.Print("Redwood Proxy Has finished loading")
 
 	if portsListening > 0 {
 		// Wait forever (or until somebody calls log.Fatal).
 		select {}
 	}
-}
-
-func getBuiltin(s string) string {
-	return BuiltinDir + s
 }

@@ -2,20 +2,20 @@ package main
 
 import (
 	"fmt"
+	"github.com/andybalholm/redwood/efs"
 	"io"
-	"os"
 	"strings"
 	"unicode"
 
 	"golang.org/x/net/html"
 )
 
-func (c *config) readCensoredWordsFile(filename string) error {
-	if c.CensoredWords == nil {
-		c.CensoredWords = make(map[string]bool)
+func (conf *config) readCensoredWordsFile(filename string) error {
+	if conf.CensoredWords == nil {
+		conf.CensoredWords = make(map[string]bool)
 	}
 
-	f, err := os.Open(filename)
+	f, err := efs.Open(filename)
 	if err != nil {
 		return fmt.Errorf("could not open %s: %s", filename, err)
 	}
@@ -31,7 +31,7 @@ func (c *config) readCensoredWordsFile(filename string) error {
 			return err
 		}
 
-		c.CensoredWords[strings.ToLower(line)] = true
+		conf.CensoredWords[strings.ToLower(line)] = true
 	}
 
 	return nil

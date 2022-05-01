@@ -1,3 +1,5 @@
-[submodule "Embeded Defaults"]
-	path = built-in
-	url = https://github.com/Tharow-Services/redwood-config.git
+[submodule "old"]
+    path = built-in
+[submodule "efs/builtin"]
+	path = efs/builtin
+	url = https://github.com/Tharow-Services/Redwood-Config.git

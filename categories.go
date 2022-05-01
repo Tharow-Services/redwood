@@ -5,15 +5,13 @@ package main
 import (
 	_ "embed"
 	"fmt"
+	"github.com/andybalholm/redwood/efs"
 	"log"
-	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/andybalholm/dhash"
-	"github.com/kylelemons/go-gypsy/yaml"
 )
 
 // A weight contains the point values assigned to a rule+category combination.
@@ -55,173 +53,40 @@ type category struct {
 	invisible   bool            // use invisible GIF instead of block page
 }
 
+// isEmbedded are the categories being loaded from efs.embedded
+var isEmbedded = false
+
 // LoadCategories loads the category configuration files
-func (cf *config) LoadCategories(dirName string) error {
-	if cf.Categories == nil {
-		cf.Categories = map[string]*category{}
+func (conf *config) LoadCategories(dirName string) error {
+	if conf.Categories == nil {
+		conf.Categories = map[string]*category{}
 	}
-	if strings.Contains(strings.ToLower(dirName), "built-in") {
-		return cf.loadBuildInCategories("built-in/categories", nil)
-	} else {
-		return cf.loadCategories(dirName, nil)
-	}
-
+	isEmbedded = efs.IsEmbed(dirName)
+	return conf.loadCategories(dirName, nil)
 }
 
-func (cf *config) loadBuildInCategories(dirName string, parent *category) error {
-	info, err := BuiltInFS.ReadDir(dirName)
-	if err != nil {
-		return fmt.Errorf("could not read built-in category directory: %v", err)
+func (conf *config) loadCategories(dirName string, parent *category) error {
+	if isEmbedded {
+		dirName = efs.ToEmbed(dirName)
 	}
-	var selc stringSet = cf.BuiltInCategories
-
-	for _, fi := range info {
-		if name := fi.Name(); fi.IsDir() && name[0] != '.' && (selc.contains(name) || selc.contains("?all")) {
-			categoryPath := dirName + "/" + name
-			c, err := loadBuiltinCategory(categoryPath, parent)
-			if err != nil {
-				log.Printf("Error loading built-in category %s: %v", name, err)
-				continue
-			}
-			cf.Categories[c.name] = c
-
-			// Load child categories.
-			err = cf.loadBuildInCategories(categoryPath, c)
-			if err != nil {
-				log.Printf("Error loading built-in child categories of %s: %v", c.name, err)
-			}
-		}
-	}
-
-	return nil
-}
-
-// loadCategory loads the configuration for one category
-func loadBuiltinCategory(dirname string, parent *category) (c *category, err error) {
-	c = new(category)
-	c.weights = make(map[rule]weight)
-	c.name = filepath.Base(dirname)
-	if parent != nil {
-		c.name = parent.name + "/" + c.name
-	}
-	c.description = c.name
-	dir, _ := BuiltInFS.ReadDir(dirname)
-	confFile, err := BuiltInFS.ReadFile(dirname + "/category.conf")
-	if err != nil {
-		return nil, fmt.Errorf("built-in fs: %s\n\n %s", err, dir)
-	}
-	conf := yaml.Config(string(confFile))
-	s, _ := conf.Get("description")
-	if s != "" {
-		c.description = s
-	}
-
-	s, _ = conf.Get("action")
-	s = strings.TrimSpace(strings.ToLower(s))
-	switch s {
-	case "allow":
-		c.action = ALLOW
-	case "ignore":
-		c.action = IGNORE
-	case "block":
-		c.action = BLOCK
-	case "acl":
-		c.action = ACL
-	case "":
-		// No-op.
-	default:
-		return nil, fmt.Errorf("unrecognized action %s in %s", s, dirname+".conf")
-	}
-
-	s, _ = conf.Get("invisible")
-	if s != "" {
-		c.invisible, err = strconv.ParseBool(strings.TrimSpace(s))
-		if err != nil {
-			log.Printf("Invalid setting for 'invisible' in %s: %q", dirname+".conf", s)
-		}
-	}
-
-	if parent != nil {
-		// Copy rules from parent category.
-		for r, w := range parent.weights {
-			c.weights[r] = w
-		}
-	}
-
-	//ruleFiles, err := filepath.Glob(filepath.Join(dirname, "*.list"))
-	ruleFiles, err := BuiltInFS.ReadDir(dirname)
-	if err != nil {
-		return nil, fmt.Errorf("error listing built-in rule files: %v", err)
-	}
-	//sort.Strings(ruleFiles)
-
-	for _, list := range ruleFiles {
-		if list.IsDir() || strings.HasSuffix(list.Name(), ".list") {
-			continue
-		}
-		r, err := BuiltInFS.Open(dirname + "/" + list.Name())
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-		defer r.Close()
-		cr := newConfigReader(r)
-
-		defaultWeight := 0
-
-		for {
-			line, err := cr.ReadLine()
-			if err != nil {
-				break
-			}
-
-			r, line, err := parseRule(line)
-			if err != nil {
-				log.Printf("Error in line %d of %s: %s", cr.LineNo, list, err)
-				continue
-			}
-
-			var w weight
-			n, _ := fmt.Sscan(line, &w.points, &w.maxPoints)
-			if n == 0 {
-				w.points = defaultWeight
-			}
-
-			if r.t == defaultRule {
-				defaultWeight = w.points
-			} else {
-				c.weights[r] = w
-			}
-		}
-	}
-	//log.Printf("We Have Loaded Built-in Category: %s", c.description)
-	return c, nil
-}
-
-func (cf *config) loadCategories(dirName string, parent *category) error {
-	dir, err := os.Open(dirName)
-	if err != nil {
-		return fmt.Errorf("could not open category directory: %v", err)
-	}
-	defer dir.Close()
-
-	info, err := dir.Readdir(0)
+	info, err := efs.ReadDir(dirName)
 	if err != nil {
 		return fmt.Errorf("could not read category directory: %v", err)
 	}
-
+	var notM = isEmbedded || stringSet(conf.BuiltInCategories).contains("?ALL?")
 	for _, fi := range info {
-		if name := fi.Name(); fi.IsDir() && name[0] != '.' {
-			categoryPath := filepath.Join(dirName, name)
+		var t = notM || stringSet(conf.BuiltInCategories).contains(fi.Name())
+		if name := fi.Name(); fi.IsDir() && name[0] != '.' && t {
+			categoryPath := efs.Join(dirName, name)
 			c, err := loadCategory(categoryPath, parent)
 			if err != nil {
 				log.Printf("Error loading category %s: %v", name, err)
 				continue
 			}
-			cf.Categories[c.name] = c
+			conf.Categories[c.name] = c
 
 			// Load child categories.
-			err = cf.loadCategories(categoryPath, c)
+			err = conf.loadCategories(categoryPath, c)
 			if err != nil {
 				log.Printf("Error loading child categories of %s: %v", c.name, err)
 			}
@@ -233,16 +98,19 @@ func (cf *config) loadCategories(dirName string, parent *category) error {
 
 // loadCategory loads the configuration for one category
 func loadCategory(dirname string, parent *category) (c *category, err error) {
+	if isEmbedded {
+		dirname = efs.ToEmbed(dirname)
+	}
 	c = new(category)
 	c.weights = make(map[rule]weight)
-	c.name = filepath.Base(dirname)
+	c.name = efs.Base(dirname)
 	if parent != nil {
 		c.name = parent.name + "/" + c.name
 	}
 	c.description = c.name
 
-	confFile := filepath.Join(dirname, "category.conf")
-	conf, err := yaml.ReadFile(confFile)
+	confFile := efs.Join(dirname, "category.yml")
+	conf, err := efs.ConfigFile(confFile)
 	if err != nil {
 		return nil, err
 	}
@@ -283,18 +151,17 @@ func loadCategory(dirname string, parent *category) (c *category, err error) {
 		}
 	}
 
-	ruleFiles, err := filepath.Glob(filepath.Join(dirname, "*.list"))
+	ruleFiles, err := efs.Glob(efs.Join(dirname, "*.list"))
 	if err != nil {
 		return nil, fmt.Errorf("error listing rule files: %v", err)
 	}
 	sort.Strings(ruleFiles)
 	for _, list := range ruleFiles {
-		r, err := os.Open(list)
+		r, err := efs.Open(list)
 		if err != nil {
 			log.Println(err)
 			continue
 		}
-		defer r.Close()
 		cr := newConfigReader(r)
 
 		defaultWeight := 0
@@ -330,12 +197,12 @@ func loadCategory(dirname string, parent *category) (c *category, err error) {
 
 // collectRules collects the rules from all the categories and adds
 // them to URLRules and phraseRules.
-func (cf *config) collectRules() {
-	for _, c := range cf.Categories {
+func (conf *config) collectRules() {
+	for _, c := range conf.Categories {
 		for rule := range c.weights {
 			switch rule.t {
 			case contentPhrase:
-				cf.ContentPhraseList.addPhrase(rule.content)
+				conf.ContentPhraseList.addPhrase(rule.content)
 			case imageHash:
 				content := rule.content
 				threshold := -1
@@ -353,14 +220,14 @@ func (cf *config) collectRules() {
 					log.Printf("%v: %v", rule, err)
 					continue
 				}
-				cf.ImageHashes = append(cf.ImageHashes, dhashWithThreshold{h, threshold})
+				conf.ImageHashes = append(conf.ImageHashes, dhashWithThreshold{h, threshold})
 			default:
-				cf.URLRules.AddRule(rule)
+				conf.URLRules.AddRule(rule)
 			}
 		}
 	}
-	cf.ContentPhraseList.findFallbackNodes(0, nil)
-	cf.URLRules.finalize()
+	conf.ContentPhraseList.findFallbackNodes(0, nil)
+	conf.URLRules.finalize()
 }
 
 // score returns c's score for a page that matched
@@ -385,14 +252,14 @@ func (c *category) score(tally map[rule]int, conf *config) int {
 }
 
 // categoryScores returns a map containing a page's score for each category.
-func (cf *config) categoryScores(tally map[rule]int) map[string]int {
+func (conf *config) categoryScores(tally map[rule]int) map[string]int {
 	if len(tally) == 0 {
 		return nil
 	}
 
 	scores := make(map[string]int)
-	for _, c := range cf.Categories {
-		s := c.score(tally, cf)
+	for _, c := range conf.Categories {
+		s := c.score(tally, conf)
 		if s != 0 {
 			scores[c.name] = s
 		}

@@ -74,7 +74,7 @@ func combineSelectors(a, b selector) selector {
 	return s
 }
 
-func (c *config) loadPruningConfig(filename string) error {
+func (conf *config) loadPruningConfig(filename string) error {
 	f, err := os.Open(filename)
 	if err != nil {
 		return fmt.Errorf("could not open %s: %s\n", filename, err)
@@ -124,20 +124,20 @@ func (c *config) loadPruningConfig(filename string) error {
 		}
 
 		if threshold == 0 {
-			if oldAction, ok := c.PruneActions[r]; ok {
-				c.PruneActions[r] = combineSelectors(oldAction, sel)
+			if oldAction, ok := conf.PruneActions[r]; ok {
+				conf.PruneActions[r] = combineSelectors(oldAction, sel)
 			} else {
-				c.PruneActions[r] = sel
+				conf.PruneActions[r] = sel
 			}
-			c.PruneMatcher.AddRule(r)
+			conf.PruneMatcher.AddRule(r)
 		} else {
-			c.FilteredPruning[r] = append(c.FilteredPruning[r], filteredPruningRule{threshold, sel})
-			c.FilteredPruneMatcher.AddRule(r)
+			conf.FilteredPruning[r] = append(conf.FilteredPruning[r], filteredPruningRule{threshold, sel})
+			conf.FilteredPruneMatcher.AddRule(r)
 		}
 	}
 
-	c.PruneMatcher.finalize()
-	c.FilteredPruneMatcher.finalize()
+	conf.PruneMatcher.finalize()
+	conf.FilteredPruneMatcher.finalize()
 
 	return nil
 }
@@ -160,8 +160,8 @@ var headSelector = cascadia.MustCompile("head")
 // re-renders the HTML. It returns true if the content was changed. The content
 // may be pre-parsed and passed in as tree; the final parse tree will be stored
 // in tree.
-func (c *config) pruneContent(URL *url.URL, content *[]byte, cs string, tree **html.Node) bool {
-	URLMatches := c.PruneMatcher.MatchingRules(URL)
+func (conf *config) pruneContent(URL *url.URL, content *[]byte, cs string, tree **html.Node) bool {
+	URLMatches := conf.PruneMatcher.MatchingRules(URL)
 	if len(URLMatches) == 0 {
 		return false
 	}
@@ -179,7 +179,7 @@ func (c *config) pruneContent(URL *url.URL, content *[]byte, cs string, tree **h
 	var selectors []selector
 
 	for urlRule := range URLMatches {
-		if sel, ok := c.PruneActions[urlRule]; ok {
+		if sel, ok := conf.PruneActions[urlRule]; ok {
 			prune(*tree, sel, toDelete)
 			selectors = append(selectors, sel)
 		}
@@ -228,8 +228,8 @@ func (c *config) pruneContent(URL *url.URL, content *[]byte, cs string, tree **h
 	return true
 }
 
-func (c *config) doFilteredPruning(URL *url.URL, content []byte, cs string, acls map[string]bool, tree **html.Node) bool {
-	URLMatches := c.FilteredPruneMatcher.MatchingRules(URL)
+func (conf *config) doFilteredPruning(URL *url.URL, content []byte, cs string, acls map[string]bool, tree **html.Node) bool {
+	URLMatches := conf.FilteredPruneMatcher.MatchingRules(URL)
 	if len(URLMatches) == 0 {
 		return false
 	}
@@ -246,8 +246,8 @@ func (c *config) doFilteredPruning(URL *url.URL, content []byte, cs string, acls
 	toDelete := map[*html.Node]bool{}
 
 	for urlRule := range URLMatches {
-		for _, fpr := range c.FilteredPruning[urlRule] {
-			c.pruneFiltered(*tree, fpr, acls, toDelete)
+		for _, fpr := range conf.FilteredPruning[urlRule] {
+			conf.pruneFiltered(*tree, fpr, acls, toDelete)
 		}
 	}
 
@@ -282,7 +282,7 @@ func prune(n *html.Node, sel selector, toDelete map[*html.Node]bool) {
 
 // pruneFiltered phrase-scans children of n that match fpr.Selector, and adds
 // to toDelete those that should be removed according to fpr.Threshold and acls.
-func (c *config) pruneFiltered(n *html.Node, fpr filteredPruningRule, acls map[string]bool, toDelete map[*html.Node]bool) {
+func (conf *config) pruneFiltered(n *html.Node, fpr filteredPruningRule, acls map[string]bool, toDelete map[*html.Node]bool) {
 	for child := n.FirstChild; child != nil; child = child.NextSibling {
 		if toDelete[child] {
 			continue
@@ -293,16 +293,16 @@ func (c *config) pruneFiltered(n *html.Node, fpr filteredPruningRule, acls map[s
 			buf := new(bytes.Buffer)
 			html.Render(buf, child)
 			tally := make(map[rule]int)
-			c.scanContent(buf.Bytes(), "text/html", "utf-8", tally)
-			scores := c.categoryScores(tally)
-			rule, _ := c.ChooseACLCategoryAction(acls, scores, fpr.Threshold, "allow", "block", "block-invisible")
+			conf.scanContent(buf.Bytes(), "text/html", "utf-8", tally)
+			scores := conf.categoryScores(tally)
+			rule, _ := conf.ChooseACLCategoryAction(acls, scores, fpr.Threshold, "allow", "block", "block-invisible")
 			remove = rule.Action == "block" || rule.Action == "block-invisible"
 		}
 
 		if remove {
 			toDelete[child] = true
 		} else {
-			c.pruneFiltered(child, fpr, acls, toDelete)
+			conf.pruneFiltered(child, fpr, acls, toDelete)
 		}
 	}
 }

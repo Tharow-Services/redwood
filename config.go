@@ -10,6 +10,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/andybalholm/redwood/efs"
 	"html/template"
 	"io"
 	"log"
@@ -59,8 +60,9 @@ type config struct {
 	ACLs    ACLDefinitions
 	APIACLs ACLDefinitions
 
-	PIDFile string
-	TestURL string
+	PIDFile     string
+	TestURL     string
+	ConfigProxy bool
 
 	ProxyAddresses       []string
 	TransparentAddresses []string
@@ -83,7 +85,6 @@ type config struct {
 
 	CertFile         string
 	KeyFile          string
-	InteralTls       bool
 	TLSCert          tls.Certificate
 	ParsedTLSCert    *x509.Certificate
 	TLSReady         bool
@@ -103,6 +104,7 @@ type config struct {
 	LogTitle      bool
 	LogUserAgent  bool
 	TLSLog        string
+	ContentLog    string
 	ContentLogDir string
 	Verbose       map[string]bool
 
@@ -115,8 +117,9 @@ type config struct {
 	GZIPLevel   int
 	BrotliLevel int
 
-	ClamdSocket string
-	//ClamAV      *clamd.Client
+	RootScriptHandler     ScriptingHandler
+	EnabledScripts        []string
+	EnabledScriptHandlers []string
 
 	StarlarkScripts   []string
 	StarlarkFunctions map[string][]starlarkFunction
@@ -151,25 +154,27 @@ func loadConfiguration() (*config, error) {
 		Verbose:              map[string]bool{},
 	}
 
-	c.flags.StringVar(&c.AccessLog, "access-log", "redwood.access.log", "path to access-log file")
+	c.flags.StringVar(&c.AccessLog, "access-log", "", "path to access-log file")
 	c.newActiveFlag("acls", "", "access-control-list (ACL) rule file", c.ACLs.load)
 	c.newActiveFlag("api-acls", "", "ACL rule file for API requests", c.APIACLs.load)
 	c.newActiveFlag("authenticator", "", "program to authenticate users", c.addAuthenticator)
 	c.newActiveFlag("authenticator-api", "", "HTTP API endpoint to authenticate users", c.addHTTPAuthenticator)
 	c.flags.StringVar(&c.AuthRealm, "auth-realm", "Redwood", "realm name for authentication prompts")
 	c.flags.BoolVar(&c.BlockObsoleteSSL, "block-obsolete-ssl", false, "block SSL connections with protocol version too old to filter")
-	c.newActiveFlag("blockpage", "school", "path to template for block page, or URL of dynamic block page", c.loadBlockPage)
+	c.flags.BoolVar(&c.ConfigProxy, "config-proxy", false, "configure windows proxy settings on start up")
+	c.newActiveFlag("block-page", "", "path to template for block page, or URL of dynamic block page", c.loadBlockPage)
 	c.flags.IntVar(&c.BrotliLevel, "brotli-level", 5, "level to use for brotli compression of content")
-	c.newActiveFlag("c", "redwood.conf", "configuration file path", c.readConfigFile)
-	c.newActiveFlag("categories", "built-in", "path to configuration files for categories", c.LoadCategories)
+	c.newActiveFlag("c", "", "configuration file path", c.readConfigFile)
+	c.newActiveFlag("categories", "", "path to configuration files for categories", c.LoadCategories)
 	c.newActiveFlag("censored-words", "", "file of words to remove from pages", c.readCensoredWordsFile)
 	c.flags.StringVar(&c.CGIBin, "cgi-bin", "", "path to CGI files for built-in web server")
 	c.flags.DurationVar(&c.CloseIdleConnections, "close-idle-connections", time.Minute, "how often to close idle HTTP connections")
+	c.flags.StringVar(&c.ContentLog, "content-log", "", "path to content-log file")
 	c.flags.StringVar(&c.ContentLogDir, "content-log-dir", "", "directory to log page content in (when directed to by log-content ACL action)")
 	c.newActiveFlag("content-pruning", "", "path to config file for content pruning", c.loadPruningConfig)
 	c.flags.BoolVar(&c.CountOnce, "count-once", false, "count each phrase only once per page")
 	c.flags.IntVar(&c.DhashThreshold, "dhash-threshold", 0, "how many bits can be different in an image's hash to match")
-	c.newActiveFlag("errorpage", "internal", "path to template for error page, or URL of dynamic error page", c.loadErrorPage)
+	c.newActiveFlag("error-page", "", "path to template for error page, or URL of dynamic error page", c.loadErrorPage)
 	c.flags.IntVar(&c.GZIPLevel, "gzip-level", 6, "level to use for gzip compression of content")
 	c.flags.BoolVar(&c.HTTP2Downstream, "http2-downstream", true, "Use HTTP/2 for connections to clients.")
 	c.flags.BoolVar(&c.HTTP2Upstream, "http2-upstream", true, "Use HTTP/2 for connections to upstream servers.")
@@ -182,16 +187,13 @@ func loadConfiguration() (*config, error) {
 	c.newActiveFlag("password-file", "internal", "path to file of usernames and passwords", c.readPasswordFile)
 	c.flags.StringVar(&c.PIDFile, "pidfile", "", "path of file to store process ID")
 	c.newActiveFlag("query-changes", "", "path to config file for modifying URL query strings", c.loadQueryConfig)
-	c.newActiveFlag("request-acl-script", "", "script to assign ACLs to requests", c.loadRequestACLScript)
-	c.newActiveFlag("response-acl-script", "", "script to assign ACLs to response", c.loadResponseACLScript)
 	c.flags.StringVar(&c.StarlarkLog, "starlark-log", "", "path to Starlark script log file")
 	c.flags.StringVar(&c.StaticFilesDir, "static-files-dir", "", "path to static files for built-in web server")
 	c.flags.StringVar(&c.TestURL, "test", "", "URL to test instead of running proxy server")
 	c.flags.IntVar(&c.Threshold, "threshold", 0, "minimum score for a blocked category to block a page")
 	c.flags.StringVar(&c.CertFile, "tls-cert", "", "path to certificate for serving HTTPS")
 	c.flags.StringVar(&c.KeyFile, "tls-key", "", "path to TLS certificate key")
-	c.flags.BoolVar(&c.InteralTls, "interal-tls", true, "use interal tls cert and key found in the executable")
-	c.flags.StringVar(&c.TLSLog, "tls-log", "redwood.tls.log", "path to tls log file")
+	c.flags.StringVar(&c.TLSLog, "tls-log", "", "path to tls log file")
 	c.newActiveFlag("trusted-root", "", "path to file of additional trusted root certificates (in PEM format)", c.addTrustedRoots)
 	c.newActiveFlag("verbose", "", "category of extra log messages to print", func(s string) error {
 		c.Verbose[s] = true
@@ -200,12 +202,14 @@ func loadConfiguration() (*config, error) {
 
 	c.stringListFlag("http-proxy", ":8080", "address (host:port) to listen for proxy connections on", &c.ProxyAddresses)
 	c.stringListFlag("transparent-https", "", "address to listen for intercepted HTTPS connections on", &c.TransparentAddresses)
-	c.stringListFlag("enabled-categories", "ads blacklist", "enable a list of built-in categories, selecting a categories folder overrides this", &c.BuiltInCategories)
+	c.stringListFlag("category", "ads", "enable a list of built-in categories, selecting a categories folder overrides this", &c.BuiltInCategories)
 	c.stringListFlag("classifier-ignore", "", "category to omit from classifier results", &c.ClassifierIgnoredCategories)
 	c.stringListFlag("public-suffix", "", "domain to treat as a public suffix", &c.PublicSuffixes)
 	c.stringListFlag("external-classifier", "", "HTTP API endpoint to check URLs against", &c.ExternalClassifiers)
 
 	c.stringListFlag("starlark-script", "", "Starlark script to load", &c.StarlarkScripts)
+	c.stringListFlag("script", "", "Script to load", &c.EnabledScripts)
+	c.stringListFlag("script-handler", "", "Script Handler to load", &c.EnabledScriptHandlers)
 
 	c.newActiveFlag("virtual-host", "", "a hostname substitution to apply to HTTP requests (e.g. -virtual-host me.local localhost)", func(val string) error {
 		f := strings.Fields(val)
@@ -227,18 +231,11 @@ func loadConfiguration() (*config, error) {
 	if !specified {
 		err := c.readConfigFile("redwood.conf")
 		if err != nil {
-			rc, err := BuiltInFS.ReadFile(getBuiltin("redwood.conf"))
+			err = efs.WriteFile(">>/redwood.conf", "redwood.conf")
 			if err != nil {
-				return nil, fmt.Errorf("built-in fs: %s", err)
+				return nil, err
 			}
-			os.WriteFile("redwood.conf", rc, 0666)
-			if err == nil {
-				err := c.readConfigFile("redwood.conf")
-				if err != nil {
-					return nil, err
-				}
-			}
-			return nil, err
+			return nil, c.readConfigFile("redwood.conf")
 		}
 	}
 
@@ -248,7 +245,7 @@ func loadConfiguration() (*config, error) {
 	}
 
 	if c.Categories == nil {
-		err := c.LoadCategories("built-in")
+		err := c.LoadCategories(">>/categories")
 		if err != nil {
 			log.Println(err)
 		}
@@ -263,6 +260,7 @@ func loadConfiguration() (*config, error) {
 	c.FilteredPruneMatcher.publicSuffixes = c.PublicSuffixes
 
 	c.loadStarlarkScripts()
+	CheckScripts()
 
 	return c, nil
 }
@@ -270,7 +268,7 @@ func loadConfiguration() (*config, error) {
 // readConfigFile reads the specified configuration file.
 // For each line of the form "key value" or "key = value", it sets the flag
 // variable named key to a value of value.
-func (c *config) readConfigFile(filename string) error {
+func (conf *config) readConfigFile(filename string) error {
 	f, err := os.Open(filename)
 	if err != nil {
 		return fmt.Errorf("could not open %s: %s", filename, err)
@@ -321,7 +319,7 @@ func (c *config) readConfigFile(filename string) error {
 			value = line
 		}
 
-		err = c.flags.Set(key, value)
+		err = conf.flags.Set(key, value)
 		if err != nil {
 			log.Println("Could not set", key, "to", value, ":", err)
 		}
@@ -390,17 +388,17 @@ func (af *activeFlag) Set(s string) error {
 	return err
 }
 
-func (c *config) newActiveFlag(name, value, usage string, f func(string) error) flag.Value {
+func (conf *config) newActiveFlag(name, value, usage string, f func(string) error) flag.Value {
 	af := &activeFlag{
 		f:     f,
 		value: value,
 	}
-	c.flags.Var(af, name, usage)
+	conf.flags.Var(af, name, usage)
 	return af
 }
 
-func (c *config) stringListFlag(name, value, usage string, list *[]string) flag.Value {
-	return c.newActiveFlag(name, "", usage, func(s string) error {
+func (conf *config) stringListFlag(name, value, usage string, list *[]string) flag.Value {
+	return conf.newActiveFlag(name, "", usage, func(s string) error {
 		*list = append(*list, s)
 		return nil
 	})

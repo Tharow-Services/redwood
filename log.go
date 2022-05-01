@@ -117,6 +117,21 @@ func downloadedFilename(resp *http.Response) string {
 	return params["filename"]
 }
 
+func Lce(err error) {
+	log.Printf("unable to close rescourse: %s", err)
+}
+
+func (t TLSSession) logClose(err error, c bool, l string) {
+	t.Errorf("unable to close connection: %s", err, c, l)
+}
+func (t TLSSession) Errorf(format string, err error, cachedCert bool, tlsFingerprint string) {
+	t.Error(fmt.Errorf(format, err), cachedCert, tlsFingerprint)
+}
+
+func (t TLSSession) Error(err error, cachedCert bool, tlsFingerprint string) {
+	logTLS(t.User, t.ServerAddr, t.SNI, err, cachedCert, tlsFingerprint)
+}
+
 func logTLS(user, serverAddr, serverName string, err error, cachedCert bool, tlsFingerprint string) {
 	errStr := ""
 	if err != nil {
@@ -127,8 +142,8 @@ func logTLS(user, serverAddr, serverName string, err error, cachedCert bool, tls
 	if cachedCert {
 		cached = "cached certificate"
 	}
-
-	tlsLog.Log(toStrings(time.Now().Format("2006-01-02 15:04:05.000000"), user, serverName, serverAddr, errStr, cached, tlsFingerprint))
+	// "2006-01-02 15:04:05.000000"
+	tlsLog.Log(toStrings(time.Now().Format("2006.01.02::15:04:05.000000"), user, serverName, serverAddr, errStr, cached, tlsFingerprint))
 }
 
 func logContent(u *url.URL, content []byte, scores map[string]int) {

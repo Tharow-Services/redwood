@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/andybalholm/redwood/efs"
 	"io"
 	"log"
 	"mime"
@@ -18,8 +19,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/dop251/goja"
 )
 
 // Access Control Lists (ACLs)
@@ -43,9 +42,6 @@ type ACLDefinitions struct {
 	// authenticator-api endpoint.
 	ExternalDeviceGroups map[string][]string
 	ExternalDGLock       sync.RWMutex
-
-	RequestScripts  []*goja.Program
-	ResponseScripts []*goja.Program
 
 	Times []struct {
 		schedule WeeklySchedule
@@ -198,24 +194,23 @@ func (a *ACLDefinitions) AddRule(acl string, newRule []string) error {
 	return nil
 }
 
-// load loads ACL definitions and actions from a file.
+// load ACLDefinitions and actions from a file.
 func (a *ACLDefinitions) load(filename string) error {
-	var fn string = "redwood.acls.conf"
+	var fn = ">>/redwood.acls.conf"
 	if strings.Contains(filename, "api") {
-		fn = "redwood.api-acls.conf"
+		fn = ">>/redwood.api-acls.conf"
 	}
 	f, err := os.Open(filename)
 	if err != nil {
-		// Load Interal File
-		fi, err := BuiltInFS.ReadFile(getBuiltin(fn))
-		if err != nil {
-			return fmt.Errorf("built-in fs: %s", err)
-		}
-		err = os.WriteFile(filename, fi, 0666)
+		err = efs.WriteFile(fn, filename)
 		if err != nil {
 			return err
 		}
-		a.load(filename)
+		err = a.load(filename)
+		if err != nil {
+			return err
+		}
+
 	}
 	defer f.Close()
 
@@ -395,17 +390,6 @@ func (a *ACLDefinitions) requestACLs(r *http.Request, user string) map[string]bo
 		}
 	}
 
-	for _, s := range a.RequestScripts {
-		rt := jsRuntime()
-		rt.Set("request", r)
-		rt.Set("user", user)
-		rt.Set("addACL", func(a string) { acls[a] = true })
-		_, err := rt.RunProgram(s)
-		if err != nil {
-			log.Printf("Error in request ACL script for %v: %v", r.URL, err)
-		}
-	}
-
 	return acls
 }
 
@@ -455,16 +439,6 @@ func (a *ACLDefinitions) responseACLs(resp *http.Response) map[string]bool {
 	status = status / 100 * 100
 	for _, acl := range a.StatusCodes[status] {
 		acls[acl] = true
-	}
-
-	for _, s := range a.ResponseScripts {
-		rt := jsRuntime()
-		rt.Set("response", resp)
-		rt.Set("addACL", func(a string) { acls[a] = true })
-		_, err := rt.RunProgram(s)
-		if err != nil {
-			log.Printf("Error in response ACL script for %v: %v", resp.Request.URL, err)
-		}
 	}
 
 	return acls
@@ -575,7 +549,7 @@ func unionACLSets(sets ...map[string]bool) map[string]bool {
 // the process is repeated with just the original set of ACLs and ACL
 // categories. The second return value is a list of the categories that were
 // ignored.
-func (c *config) ChooseACLCategoryAction(acls map[string]bool, scores map[string]int, threshold int, actions ...string) (ar ACLActionRule, ignored []string) {
+func (conf *config) ChooseACLCategoryAction(acls map[string]bool, scores map[string]int, threshold int, actions ...string) (ar ACLActionRule, ignored []string) {
 	choices := make(map[string]bool, len(actions))
 	for _, a := range actions {
 		choices[a] = true
@@ -584,7 +558,7 @@ func (c *config) ChooseACLCategoryAction(acls map[string]bool, scores map[string
 	acls = copyACLSet(acls)
 	significantScores := make(map[string]int)
 	for k, v := range scores {
-		if v > 0 && c.Categories[k] != nil && c.Categories[k].action == ACL {
+		if v > 0 && conf.Categories[k] != nil && conf.Categories[k].action == ACL {
 			acls[k] = true
 			continue
 		}
@@ -614,7 +588,7 @@ func (c *config) ChooseACLCategoryAction(acls map[string]bool, scores map[string
 		found := false
 
 	ruleLoop:
-		for _, r = range c.ACLs.Actions {
+		for _, r = range conf.ACLs.Actions {
 			if !bloom.Superset(&r.Bloom) {
 				continue ruleLoop
 			}
@@ -649,7 +623,7 @@ func (c *config) ChooseACLCategoryAction(acls map[string]bool, scores map[string
 		}
 
 		if !found {
-			cg := c.Categories[cat]
+			cg := conf.Categories[cat]
 			r = ACLActionRule{
 				Needed: []string{cat},
 			}
@@ -677,5 +651,5 @@ func (c *config) ChooseACLCategoryAction(acls map[string]bool, scores map[string
 		}
 	}
 
-	return c.ACLs.ChooseACLAction(acls, actions...), ignored
+	return conf.ACLs.ChooseACLAction(acls, actions...), ignored
 }

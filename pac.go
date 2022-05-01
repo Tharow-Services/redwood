@@ -73,12 +73,12 @@ const standardPACTemplate = `function FindProxyForURL(url, host) {
 	return "PROXY %s";
 }`
 
-func (c *config) loadPACTemplate(filename string) error {
+func (conf *config) loadPACTemplate(filename string) error {
 	t, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return err
 	}
-	c.PACTemplate = string(t)
+	conf.PACTemplate = string(t)
 	return nil
 }
 
@@ -111,7 +111,7 @@ func (p *perUserProxy) addExpectedNetwork(network string) {
 	}
 }
 
-func (c *config) newPerUserProxy(user string, portInfo customPortInfo) (*perUserProxy, error) {
+func (conf *config) newPerUserProxy(user string, portInfo customPortInfo) (*perUserProxy, error) {
 	p := &perUserProxy{
 		Port:            portInfo.Port,
 		ClientPlatform:  portInfo.ClientPlatform,
@@ -138,7 +138,7 @@ func (c *config) newPerUserProxy(user string, portInfo customPortInfo) (*perUser
 
 	server := http.Server{
 		Handler:     p,
-		IdleTimeout: c.CloseIdleConnections,
+		IdleTimeout: conf.CloseIdleConnections,
 	}
 	go server.Serve(listener)
 	log.Printf("opened per-user listener for %s on port %d", user, portInfo.Port)
@@ -340,13 +340,13 @@ func (p *perUserProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 var customPorts = make(map[int]*perUserProxy)
 var customPortLock sync.RWMutex
 
-func (c *config) openPerUserPorts() {
-	for user, portInfo := range c.CustomPorts {
+func (conf *config) openPerUserPorts() {
+	for user, portInfo := range conf.CustomPorts {
 		customPortLock.RLock()
 		p := customPorts[portInfo.Port]
 		customPortLock.RUnlock()
 		if p == nil {
-			_, err := c.newPerUserProxy(user, portInfo)
+			_, err := conf.newPerUserProxy(user, portInfo)
 			if err != nil {
 				log.Printf("error opening per-user listener for %s: %v", user, err)
 			}

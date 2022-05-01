@@ -6,47 +6,33 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/andybalholm/redwood/efs"
 	"html/template"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 )
 
 // Functions for displaying block pages.
 
-// Built-in  block pages.
-//go:embed built-in/block-pages/Internal.html
-var InteralPage []byte
-
-//go:embed built-in/block-pages/School.html
-var SchoolPage []byte
-
 // transparent1x1 is a single-pixel transparent GIF file.
 const transparent1x1 = "GIF89a\x10\x00\x10\x00\x80\xff\x00\xc0\xc0\xc0\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x10\x00\x10\x00\x00\x02\x0e\x84\x8f\xa9\xcb\xed\x0f\xa3\x9c\xb4\u068b\xb3>\x05\x00;"
 
-func (c *config) loadBlockPage(path string) error {
+func (conf *config) loadBlockPage(path string) error {
 	if strings.HasPrefix(path, "http") {
-		c.BlockTemplate = nil
-		c.BlockpageURL = path
+		conf.BlockTemplate = nil
+		conf.BlockpageURL = path
 		return nil
 	}
 
-	bt := template.New("blockpage")
-	var content []byte
-	var err error
-	switch strings.ToLower(path) {
-	case "school":
-		content, err = SchoolPage, nil
-	case "internal":
-		content, err = InteralPage, nil
-	default:
-		content, err = ioutil.ReadFile(path)
-	}
+	bt := template.New("block-page")
+	content, err := efs.ReadFile(path)
+
 	if err != nil {
 		return fmt.Errorf("error loading block page template: %v", err)
 	}
@@ -55,8 +41,8 @@ func (c *config) loadBlockPage(path string) error {
 		return fmt.Errorf("error parsing block page template: %v", err)
 	}
 
-	c.BlockTemplate = bt
-	c.BlockpageURL = ""
+	conf.BlockTemplate = bt
+	conf.BlockpageURL = ""
 	return nil
 }
 
@@ -74,13 +60,13 @@ type blockData struct {
 	Response        *http.Response
 }
 
-func (c *config) aclDescription(name string) string {
-	cat, ok := c.Categories[name]
+func (conf *config) aclDescription(name string) string {
+	cat, ok := conf.Categories[name]
 	if ok {
 		return cat.description
 	}
 
-	d, ok := c.ACLs.Descriptions[name]
+	d, ok := conf.ACLs.Descriptions[name]
 	if ok {
 		return d
 	}
@@ -89,13 +75,13 @@ func (c *config) aclDescription(name string) string {
 }
 
 // Convert rule conditions into category descriptions as much as possible.
-func (c *config) aclDescriptions(rule ACLActionRule) []string {
+func (conf *config) aclDescriptions(rule ACLActionRule) []string {
 	var categories []string
 	for _, acl := range rule.Needed {
-		categories = append(categories, c.aclDescription(acl))
+		categories = append(categories, conf.aclDescription(acl))
 	}
 	for _, acl := range rule.Disallowed {
-		categories = append(categories, "not "+c.aclDescription(acl))
+		categories = append(categories, "not "+conf.aclDescription(acl))
 	}
 
 	return categories
@@ -112,14 +98,6 @@ func showURLValue(u *url.URL) string {
 	return ret
 }
 
-func defaultIfNull(v, d string) string {
-	if v != "" {
-		return v
-	}
-	return d
-
-}
-
 // showBlockPage shows a block page for a page that was blocked by an ACL.
 func showBlockPage(w http.ResponseWriter, r *http.Request, resp *http.Response, user string, tally map[rule]int, scores map[string]int, rule ACLActionRule) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -131,7 +109,7 @@ func showBlockPage(w http.ResponseWriter, r *http.Request, resp *http.Response, 
 		data := blockData{
 			URL:             showURLValue(r.URL),
 			Conditions:      rule.Conditions(),
-			User:            defaultIfNull(user, "tharow/anonymous"),
+			User:            user,
 			Tally:           listTally(stringTally(tally)),
 			Scores:          listTally(scores),
 			Categories:      strings.Join(c.aclDescriptions(rule), ", "),
@@ -205,20 +183,20 @@ func showInvisibleBlock(w http.ResponseWriter) {
 	fmt.Fprint(w, transparent1x1)
 }
 
-func (c *config) loadErrorPage(path string) error {
+func (conf *config) loadErrorPage(path string) error {
 	if strings.HasPrefix(path, "http") {
-		c.ErrorTemplate = nil
-		c.ErrorURL = path
+		conf.ErrorTemplate = nil
+		conf.ErrorURL = path
 		return nil
 	}
 
-	bt := template.New("errorpage")
+	bt := template.New("error-page")
 	var content []byte
 	var err error
-	if strings.ToLower(path) == "internal" {
-		content, err = BuiltInFS.ReadFile("error.html")
+	if strings.Contains(strings.ToLower(path), "built-in") {
+		content, err = efs.ReadFile(path)
 	} else {
-		content, err = ioutil.ReadFile(path)
+		content, err = os.ReadFile(path)
 	}
 
 	if err != nil {
@@ -229,8 +207,8 @@ func (c *config) loadErrorPage(path string) error {
 		return fmt.Errorf("error parsing error page template: %v", err)
 	}
 
-	c.ErrorTemplate = bt
-	c.ErrorURL = ""
+	conf.ErrorTemplate = bt
+	conf.ErrorURL = ""
 	return nil
 }
 

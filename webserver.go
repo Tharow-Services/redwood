@@ -12,13 +12,13 @@ import (
 
 var localServer string = "redwood.services"
 
-func (c *config) startWebServer() {
-	if c.StaticFilesDir != "" {
-		c.ServeMux.Handle("/", http.FileServer(http.Dir(c.StaticFilesDir)))
+func (conf *config) startWebServer() {
+	if conf.StaticFilesDir != "" {
+		conf.ServeMux.Handle("/", http.FileServer(http.Dir(conf.StaticFilesDir)))
 	}
 
-	if c.CGIBin != "" {
-		dir, err := os.Open(c.CGIBin)
+	if conf.CGIBin != "" {
+		dir, err := os.Open(conf.CGIBin)
 		if err != nil {
 			log.Println("Could not open CGI directory:", err)
 			return
@@ -35,8 +35,8 @@ func (c *config) startWebServer() {
 			if mode := fi.Mode(); (mode&os.ModeType == 0) && (mode.Perm()&0100 != 0) {
 				// It's an executable file.
 				name := "/" + fi.Name()
-				scriptPath := filepath.Join(c.CGIBin, fi.Name())
-				c.ServeMux.Handle(name, &cgi.Handler{
+				scriptPath := filepath.Join(conf.CGIBin, fi.Name())
+				conf.ServeMux.Handle(name, &cgi.Handler{
 					Path: scriptPath,
 				})
 			}

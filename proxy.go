@@ -126,8 +126,10 @@ func (h proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if u, ok := getConfig().IPToUser[client]; ok {
 		authUser = u
+	} else if lanAddress(client) {
+		authUser = fmt.Sprintf("local/%s", client)
 	} else {
-		authUser = "Anonymous"
+		authUser = "Unknown/Anonymous"
 	}
 
 	// Reconstruct the URL if it is incomplete (i.e. on a transparent proxy).
@@ -181,7 +183,10 @@ func (h proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Error hijacking connection for CONNECT request to %s: %v", r.URL.Host, err)
 			panic(http.ErrAbortHandler)
 		}
-		fmt.Fprint(conn, "HTTP/1.1 200 Connection Established\r\n\r\n")
+		_, err = fmt.Fprint(conn, "HTTP/1.1 200 Connection Established\r\n\r\n")
+		if err != nil {
+			log.Print(fmt.Errorf("error printing to connection: %s", err))
+		}
 
 		server := &http.Server{
 			Handler: proxyHandler{
@@ -192,7 +197,10 @@ func (h proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			},
 			IdleTimeout: getConfig().CloseIdleConnections,
 		}
-		server.Serve(&singleListener{conn: conn})
+		err = server.Serve(&singleListener{conn: conn})
+		if err != nil {
+			log.Print(fmt.Errorf("single server listener error: %s", err))
+		}
 		return
 	}
 
@@ -222,7 +230,10 @@ func (h proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Error hijacking connection for CONNECT request to %s: %v", r.URL.Host, err)
 			panic(http.ErrAbortHandler)
 		}
-		fmt.Fprint(conn, "HTTP/1.1 200 Connection Established\r\n\r\n")
+		_, err = fmt.Fprint(conn, "HTTP/1.1 200 Connection Established\r\n\r\n")
+		if err != nil {
+			log.Print(fmt.Errorf("error printing to connection: %s", err))
+		}
 		SSLBump(conn, r.URL.Host, user, authUser, r)
 		return
 	}
@@ -251,7 +262,11 @@ func (h proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Error hijacking connection for CONNECT request to %s: %v", r.URL.Host, err)
 			panic(http.ErrAbortHandler)
 		}
-		fmt.Fprint(conn, "HTTP/1.1 200 Connection Established\r\n\r\n")
+
+		_, err = fmt.Fprint(conn, "HTTP/1.1 200 Connection Established\r\n\r\n")
+		if err != nil {
+			log.Print(fmt.Errorf("error printing to connection: %s", err))
+		}
 		logAccess(r, nil, 0, false, user, request.Tally, request.Scores.data, request.Action, "", request.Ignored)
 		connectDirect(conn, r.URL.Host, nil, dialer)
 		return
@@ -320,7 +335,7 @@ func (h proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Some HTTP/2 servers don't like having a body on a GET request, even if
 	// it is empty.
 	if r.ContentLength == 0 {
-		r.Body.Close()
+		Lce(r.Body.Close())
 		r.Body = nil
 	}
 
@@ -336,7 +351,9 @@ func (h proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		logAccess(r, nil, 0, false, user, request.Tally, request.Scores.data, request.Action, "", request.Ignored)
 		return
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		Lce(Body.Close())
+	}(resp.Body)
 
 	// Prevent switching to QUIC.
 	resp.Header.Del("Alternate-Protocol")
@@ -413,6 +430,8 @@ func (h proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	response.PossibleActions = []string{"allow", "block", "block-invisible"}
 	callStarlarkFunctions("filter_response", response)
 
+	response = getConfig().RootScriptHandler.FilterResponse(response)
+
 	response.chooseAction()
 
 	switch response.Action.Action {
@@ -460,7 +479,7 @@ func filterRequest(req *Request, checkAuth bool) {
 		jd := json.NewDecoder(cr.Body)
 		externalScores := make(map[string]int)
 		err = jd.Decode(&externalScores)
-		cr.Body.Close()
+		Lce(cr.Body.Close())
 		if err != nil {
 			log.Printf("Error decoding response from external-classifier (%s): %v", classifier, err)
 			continue
@@ -484,6 +503,9 @@ func filterRequest(req *Request, checkAuth bool) {
 	}
 
 	callStarlarkFunctions("filter_request", req)
+
+	req = getConfig().RootScriptHandler.FilterRequest(req)
+
 	req.chooseAction()
 }
 
@@ -667,7 +689,7 @@ func newHijackedConn(w http.ResponseWriter) (*hijackedConn, error) {
 	}
 	err = bufrw.Flush()
 	if err != nil {
-		conn.Close()
+		Lce(conn.Close())
 		return nil, err
 	}
 	return &hijackedConn{
@@ -733,11 +755,17 @@ func (h proxyHandler) makeWebsocketConnection(w http.ResponseWriter, r *http.Req
 	}
 
 	go func() {
-		io.Copy(conn, serverConn)
-		conn.Close()
+		_, err := io.Copy(conn, serverConn)
+		if err != nil {
+			logVerbose("debug", "unable to copy serverConnection to Connection: %s", err)
+		}
+		Lce(conn.Close())
 	}()
-	io.Copy(serverConn, bufrw)
-	serverConn.Close()
+	_, err = io.Copy(serverConn, bufrw)
+	if err != nil {
+		logVerbose("debug", "unable to copy bufrw to serverConnection: %s", err)
+	}
+	Lce(serverConn.Close())
 }
 
 var hopByHop = []string{
@@ -779,8 +807,14 @@ func (ln tcpKeepAliveListener) Accept() (c net.Conn, err error) {
 	if err != nil {
 		return
 	}
-	tc.SetKeepAlive(true)
-	tc.SetKeepAlivePeriod(3 * time.Minute)
+	err = tc.SetKeepAlive(true)
+	if err != nil {
+		logVerbose("debug", "tcp keep alive listener unable to be set true: %s", err)
+	}
+	err = tc.SetKeepAlivePeriod(3 * time.Minute)
+	if err != nil {
+		logVerbose("debug", "tcp keep alive listener unable to be set keep alive period: %s", err)
+	}
 	return tc, nil
 }
 
@@ -925,49 +959,49 @@ type Response struct {
 	frozen bool
 }
 
-func (r *Response) String() string {
-	return fmt.Sprintf("Response(%q)", r.Request.Request.URL.String())
+func (resp *Response) String() string {
+	return fmt.Sprintf("Response(%q)", resp.Request.Request.URL.String())
 }
 
-func (r *Response) Type() string {
+func (resp *Response) Type() string {
 	return "Response"
 }
 
-func (r *Response) Freeze() {
-	if !r.frozen {
-		r.frozen = true
-		r.Request.Freeze()
-		r.ACLs.Freeze()
-		r.Scores.Freeze()
+func (resp *Response) Freeze() {
+	if !resp.frozen {
+		resp.frozen = true
+		resp.Request.Freeze()
+		resp.ACLs.Freeze()
+		resp.Scores.Freeze()
 	}
 }
 
-func (r *Response) Truth() starlark.Bool {
+func (resp *Response) Truth() starlark.Bool {
 	return starlark.True
 }
 
-func (r *Response) Hash() (uint32, error) {
+func (resp *Response) Hash() (uint32, error) {
 	return 0, errors.New("unhashable type: Response")
 }
 
 var responseAttrNames = []string{"request", "header", "acls", "scores", "status", "body", "thumbnail", "action", "possible_actions"}
 
-func (r *Response) AttrNames() []string {
+func (resp *Response) AttrNames() []string {
 	return responseAttrNames
 }
 
-func (r *Response) Attr(name string) (starlark.Value, error) {
+func (resp *Response) Attr(name string) (starlark.Value, error) {
 	switch name {
 	case "request":
-		return r.Request, nil
+		return resp.Request, nil
 	case "acls":
-		return &r.ACLs, nil
+		return &resp.ACLs, nil
 	case "scores":
-		return &r.Scores, nil
+		return &resp.Scores, nil
 	case "status":
-		return starlark.MakeInt(r.Response.StatusCode), nil
+		return starlark.MakeInt(resp.Response.StatusCode), nil
 	case "body":
-		content, err := r.Content(getConfig().MaxContentScanSize)
+		content, err := resp.Content(getConfig().MaxContentScanSize)
 		if err != nil {
 			return starlark.None, err
 		}
@@ -976,23 +1010,23 @@ func (r *Response) Attr(name string) (starlark.Value, error) {
 		}
 		return starlark.String(content), nil
 	case "action":
-		ar, _ := r.currentAction()
+		ar, _ := resp.currentAction()
 		return starlark.String(ar.Action), nil
 	case "possible_actions":
-		return stringTuple(r.PossibleActions), nil
+		return stringTuple(resp.PossibleActions), nil
 	case "header":
-		return &HeaderDict{data: r.Response.Header}, nil
+		return &HeaderDict{data: resp.Response.Header}, nil
 
 	case "thumbnail":
-		return starlark.NewBuiltin("thumbnail", responseGetThumbnail).BindReceiver(r), nil
+		return starlark.NewBuiltin("thumbnail", responseGetThumbnail).BindReceiver(resp), nil
 
 	default:
 		return nil, nil
 	}
 }
 
-func (r *Response) SetField(name string, val starlark.Value) error {
-	if r.frozen {
+func (resp *Response) SetField(name string, val starlark.Value) error {
+	if resp.frozen {
 		return errors.New("can't set a field of a frozen object")
 	}
 
@@ -1006,7 +1040,7 @@ func (r *Response) SetField(name string, val starlark.Value) error {
 		if !ok || status64 >= 600 || status64 < 100 {
 			return fmt.Errorf("invalid HTTP status code: %v", val)
 		}
-		r.Response.StatusCode = int(status64)
+		resp.Response.StatusCode = int(status64)
 		return nil
 	case "body":
 		var body string
@@ -1014,14 +1048,14 @@ func (r *Response) SetField(name string, val starlark.Value) error {
 		if err != nil {
 			return err
 		}
-		r.SetContent([]byte(body), r.Response.Header.Get("Content-Type"))
+		resp.SetContent([]byte(body), resp.Response.Header.Get("Content-Type"))
 		return nil
 	case "action":
 		var newAction string
 		if err := assignStarlarkString(&newAction, val); err != nil {
 			return err
 		}
-		return r.setAction(newAction)
+		return resp.setAction(newAction)
 	default:
 		return starlark.NoSuchAttrError(fmt.Sprintf("can't assign to .%s field of Response", name))
 	}
@@ -1119,7 +1153,10 @@ func (resp *Response) SetContent(data []byte, contentType string) {
 			}
 		}
 		if compressor != nil {
-			compressor.Write(data)
+			_, err = compressor.Write(data)
+			if err != nil {
+				logVerbose("debug", "compressor unable ot write data: %s", err)
+			}
 			if err := compressor.Close(); err == nil {
 				resp.Response.Body = io.NopCloser(buf)
 				resp.Response.Header.Set("Content-Encoding", encoding)
@@ -1161,7 +1198,10 @@ type HeaderDict struct {
 
 func (h *HeaderDict) String() string {
 	b := new(strings.Builder)
-	h.data.Write(b)
+	err := h.data.Write(b)
+	if err != nil {
+		logVerbose("debug", "unable to write to headerDict: %s", err)
+	}
 	return b.String()
 }
 
@@ -1176,7 +1216,7 @@ func (h *HeaderDict) Freeze() {
 }
 
 func (h *HeaderDict) Truth() starlark.Bool {
-	return starlark.Bool(len(h.data) > 0)
+	return len(h.data) > 0
 }
 
 func (h *HeaderDict) Hash() (uint32, error) {
@@ -1335,7 +1375,7 @@ func (h *QueryDict) Freeze() {
 }
 
 func (h *QueryDict) Truth() starlark.Bool {
-	return starlark.Bool(len(h.data) > 0)
+	return len(h.data) > 0
 }
 
 func (h *QueryDict) Hash() (uint32, error) {
