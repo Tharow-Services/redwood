@@ -1,5 +1,3 @@
-[submodule "old"]
-    path = built-in
 [submodule "efs/builtin"]
 	path = efs/builtin
 	url = https://github.com/Tharow-Services/Redwood-Config.git
