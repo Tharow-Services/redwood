@@ -450,12 +450,7 @@ func lookupHostStarlark(thread *starlark.Thread, fn *starlark.Builtin, args star
 	}
 
 	var result string
-	var err error
-	if len(args) == 1 {
-		result, err = lookupHost(host)
-	} else {
-		result, err = lookupHost(host, server)
-	}
+	var err = errors.New("lookup host function not found")
 	return starlark.String(result), err
 }
 

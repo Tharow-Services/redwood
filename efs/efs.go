@@ -12,16 +12,18 @@ import (
 )
 
 // embedded Filesystem For Included Settings
-//go:embed ..\built-in ..\built-in\categories\*
+//go:embed builtin
+//go:embed builtin/categories
+//go:embed builtin/pages
 var embedded embed.FS
 
 const (
 
 	// Prefix for selecting from embedded instead of os.
-	Prefix = ">>/"
+	Prefix = ">>"
 
 	// Replacement for Prefix.
-	Replacement = "built-in/"
+	Replacement = "builtin/"
 
 	// number of times to replace Prefix with Replacement in FixEmbeddedPath.
 	number = 1
@@ -35,9 +37,12 @@ const (
 
 // ReadDir like fs.ReadDir but selects between embedded fs and os
 func ReadDir(path string) ([]fs.DirEntry, error) {
-	if strings.HasPrefix(path, Prefix) {
+	if IsEmbed(path) {
 		dir, err := embedded.ReadDir(strings.Replace(path, Prefix, Replacement, number))
-		return dir, fmt.Errorf(errorPrefix, err)
+		if err != nil {
+			return nil, fmt.Errorf(errorPrefix, err)
+		}
+		return dir, nil
 	} else {
 		return os.ReadDir(path)
 	}
@@ -45,9 +50,12 @@ func ReadDir(path string) ([]fs.DirEntry, error) {
 
 // Open like fs.Open but selects between embedded fs and os
 func Open(name string) (fs.File, error) {
-	if strings.HasPrefix(name, Prefix) {
+	if IsEmbed(name) {
 		file, err := embedded.Open(strings.Replace(name, Prefix, Replacement, number))
-		return file, fmt.Errorf(errorPrefix, err)
+		if err != nil {
+			return nil, fmt.Errorf(errorPrefix, err)
+		}
+		return file, nil
 	} else {
 		return os.Open(name)
 	}
@@ -55,9 +63,12 @@ func Open(name string) (fs.File, error) {
 
 // ReadFile like fs.ReadFile but selects between embedded fs and os
 func ReadFile(name string) ([]byte, error) {
-	if strings.HasPrefix(name, Prefix) {
+	if IsEmbed(name) {
 		con, err := embedded.ReadFile(strings.Replace(name, Prefix, Replacement, number))
-		return con, fmt.Errorf(errorPrefix, err)
+		if err != nil {
+			return nil, fmt.Errorf(errorPrefix, err)
+		}
+		return con, nil
 	} else {
 		return os.ReadFile(name)
 	}
@@ -67,11 +78,11 @@ func ReadFile(name string) ([]byte, error) {
 func WriteFile(path, name string) error {
 	con, err := ReadFile(path)
 	if err != nil {
-		return fmt.Errorf("efs.WriteFile: %s", err)
+		return fmt.Errorf("efs.WriteFile(%s, %s): %s", path, name, err)
 	}
 	err = os.WriteFile(name, con, filePermissions)
 	if err != nil {
-		return fmt.Errorf("efs.WriteFile: %s", err)
+		return fmt.Errorf("efs.WriteFile(%s, %s): %s", path, name, err)
 	}
 	return nil
 }

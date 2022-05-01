@@ -231,7 +231,7 @@ func loadConfiguration() (*config, error) {
 	if !specified {
 		err := c.readConfigFile("redwood.conf")
 		if err != nil {
-			err = efs.WriteFile(">>/redwood.conf", "redwood.conf")
+			err = efs.WriteFile(">>redwood.conf", "redwood.conf")
 			if err != nil {
 				return nil, err
 			}
@@ -245,7 +245,7 @@ func loadConfiguration() (*config, error) {
 	}
 
 	if c.Categories == nil {
-		err := c.LoadCategories(">>/categories")
+		err := c.LoadCategories(">>categories")
 		if err != nil {
 			log.Println(err)
 		}
