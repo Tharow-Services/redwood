@@ -73,7 +73,7 @@ func (conf *config) loadCategories(dirName string, parent *category) error {
 	if err != nil {
 		return fmt.Errorf("could not read category directory: %v", err)
 	}
-	var notM = isEmbedded || stringSet(conf.BuiltInCategories).contains("?ALL?")
+	var notM = !isEmbedded || stringSet(conf.BuiltInCategories).contains("?ALL?")
 	for _, fi := range info {
 		var t = notM || stringSet(conf.BuiltInCategories).contains(fi.Name())
 		if name := fi.Name(); fi.IsDir() && name[0] != '.' && t {

@@ -13,7 +13,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 )
@@ -191,13 +190,7 @@ func (conf *config) loadErrorPage(path string) error {
 	}
 
 	bt := template.New("error-page")
-	var content []byte
-	var err error
-	if strings.Contains(strings.ToLower(path), "built-in") {
-		content, err = efs.ReadFile(path)
-	} else {
-		content, err = os.ReadFile(path)
-	}
+	content, err := efs.ReadFile(path)
 
 	if err != nil {
 		return fmt.Errorf("error loading error page template: %v", err)

@@ -5,6 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -34,6 +35,20 @@ const (
 	// filePermissions sets the file permissions used by os.WriteFile
 	filePermissions fs.FileMode = 0666
 )
+
+// GetInternalFS warring do not use this function unless you know what you're doing
+// panics with access violation if disableGetInternalFs is enabled
+func GetInternalFS() *embed.FS {
+	if disableGetInternalFs {
+		panic("Embedded File System efs.go:GetInternalFS()->embed.FS: ACCESS VIOLATION TO EMBEDDED FILESYSTEM")
+	}
+	return &embedded
+}
+
+// disableGetInternalFs causes GetInternalFS to panic with access violation
+var disableGetInternalFs = false
+
+func LockInternalFS() { disableGetInternalFs = true }
 
 // ReadDir like fs.ReadDir but selects between embedded fs and os
 func ReadDir(path string) ([]fs.DirEntry, error) {
@@ -97,7 +112,15 @@ func Glob(pattern string) ([]string, error) {
 	if !isEmbed {
 		return filepath.Glob(pattern)
 	}
-	return fs.Glob(embedded, pattern)
+	var ret []string
+	re, err := fs.Glob(embedded, pattern)
+	if err != nil {
+		log.Printf("efs.Glob(%s):fs.Glob(nil, %s)", pattern, err)
+	}
+	for _, s := range re {
+		re = append(re, ToEmbed(s))
+	}
+	return ret, nil
 
 }
 
@@ -133,7 +156,7 @@ func Join(elem ...string) string {
 
 func Base(s string) string {
 	if IsEmbed(s) {
-		return path.Base(s)
+		return ToEmbed(path.Base(FromEmbed(s)))
 	}
 	return filepath.Base(s)
 }

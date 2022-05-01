@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/andybalholm/redwood/efs"
 	"log"
 	"net/http"
 	"net/http/cgi"
@@ -14,7 +15,15 @@ var localServer string = "redwood.services"
 
 func (conf *config) startWebServer() {
 	if conf.StaticFilesDir != "" {
-		conf.ServeMux.Handle("/", http.FileServer(http.Dir(conf.StaticFilesDir)))
+		var hfs http.FileSystem
+		if efs.IsEmbed(conf.StaticFilesDir) {
+			hfs = http.FileSystem(http.FS(*efs.GetInternalFS()))
+			// lock down internal fs after getting pointer
+			efs.LockInternalFS()
+		} else {
+			hfs = http.Dir(conf.StaticFilesDir)
+		}
+		conf.ServeMux.Handle("/", http.FileServer(hfs))
 	}
 
 	if conf.CGIBin != "" {
@@ -23,7 +32,12 @@ func (conf *config) startWebServer() {
 			log.Println("Could not open CGI directory:", err)
 			return
 		}
-		defer dir.Close()
+		defer func(dir *os.File) {
+			err := dir.Close()
+			if err != nil {
+				Lce(err)
+			}
+		}(dir)
 
 		info, err := dir.Readdir(0)
 		if err != nil {
