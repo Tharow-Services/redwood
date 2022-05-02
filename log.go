@@ -118,7 +118,9 @@ func downloadedFilename(resp *http.Response) string {
 }
 
 func Lce(err error) {
-	log.Printf("unable to close rescourse: %s", err)
+	if err != nil {
+		logVerbose("closingErrors", "unable to close resource: %s", err)
+	}
 }
 
 func (t TLSSession) logClose(err error, c bool, l string) {

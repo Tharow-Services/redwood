@@ -19,7 +19,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -30,7 +29,6 @@ import (
 	"github.com/golang/gddo/httputil"
 	"github.com/golang/gddo/httputil/header"
 	"github.com/klauspost/compress/gzip"
-	"go.starlark.net/starlark"
 	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
 	"golang.org/x/net/html"
@@ -428,9 +426,8 @@ func (h proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.PossibleActions = []string{"allow", "block", "block-invisible"}
-	callStarlarkFunctions("filter_response", response)
 
-	response = getConfig().RootScriptHandler.FilterResponse(response)
+	getConfig().RootScriptHandler.FilterResponse(&response)
 
 	response.chooseAction()
 
@@ -502,9 +499,7 @@ func filterRequest(req *Request, checkAuth bool) {
 		req.PossibleActions = append(req.PossibleActions, "require-auth")
 	}
 
-	callStarlarkFunctions("filter_request", req)
-
-	req = getConfig().RootScriptHandler.FilterRequest(req)
+	getConfig().RootScriptHandler.FilterRequest(&req)
 
 	req.chooseAction()
 }
@@ -845,107 +840,10 @@ type Request struct {
 	frozen bool
 }
 
-func (r *Request) String() string {
-	return fmt.Sprintf("Request(%q)", r.Request.URL.String())
-}
-
-func (r *Request) Type() string {
-	return "Request"
-}
-
-func (r *Request) Freeze() {
-	if !r.frozen {
-		r.frozen = true
-		r.ACLs.Freeze()
-		r.Scores.Freeze()
-	}
-}
-
-func (r *Request) Truth() starlark.Bool {
-	return starlark.True
-}
-
-func (r *Request) Hash() (uint32, error) {
-	return 0, errors.New("unhashable type: Request")
-}
-
-var requestAttrNames = []string{"url", "method", "host", "path", "user", "query", "header", "client_ip", "acls", "scores", "action", "possible_actions"}
-
-func (r *Request) AttrNames() []string {
-	return requestAttrNames
-}
-
-func (r *Request) Attr(name string) (starlark.Value, error) {
-	switch name {
-	case "url":
-		return starlark.String(r.Request.URL.String()), nil
-	case "method":
-		return starlark.String(r.Request.Method), nil
-	case "host":
-		return starlark.String(r.Request.Host), nil
-	case "path":
-		return starlark.String(r.Request.URL.Path), nil
-	case "user":
-		return starlark.String(r.User), nil
-	case "client_ip":
-		return starlark.String(r.ClientIP), nil
-	case "acls":
-		return &r.ACLs, nil
-	case "scores":
-		return &r.Scores, nil
-	case "action":
-		ar, _ := r.currentAction()
-		return starlark.String(ar.Action), nil
-	case "possible_actions":
-		return stringTuple(r.PossibleActions), nil
-	case "header":
-		return &HeaderDict{data: r.Request.Header}, nil
-	case "query":
-		return &QueryDict{
-			data:     r.Request.URL.Query(),
-			rawQuery: &r.Request.URL.RawQuery,
-		}, nil
-
-	default:
-		return nil, nil
-	}
-}
-
-func (r *Request) SetField(name string, val starlark.Value) error {
-	if r.frozen {
-		return errors.New("can't set a field of a frozen object")
-	}
-
-	switch name {
-	case "url":
-		var u string
-		if err := assignStarlarkString(&u, val); err != nil {
-			return err
-		}
-		parsed, err := url.Parse(u)
-		if err != nil {
-			return err
-		}
-		r.Request.URL = parsed
-		return nil
-	case "path":
-		return assignStarlarkString(&r.Request.URL.Path, val)
-	case "action":
-		var newAction string
-		if err := assignStarlarkString(&newAction, val); err != nil {
-			return err
-		}
-		return r.setAction(newAction)
-	default:
-		return starlark.NoSuchAttrError(fmt.Sprintf("can't assign to .%s field of Request", name))
-	}
-}
-
 // A Response is the parameter for the Starlark filter_response function.
 type Response struct {
 	Request  *Request
 	Response *http.Response
-
 	scoresAndACLs
 
 	Modified bool
@@ -959,106 +857,16 @@ type Response struct {
 	frozen bool
 }
 
-func (resp *Response) String() string {
-	return fmt.Sprintf("Response(%q)", resp.Request.Request.URL.String())
+func (resp *Response) Headers() *http.Header {
+	return &resp.Response.Header
 }
 
-func (resp *Response) Type() string {
-	return "Response"
+func (resp *Response) Status() *int {
+	return &resp.Response.StatusCode
 }
 
-func (resp *Response) Freeze() {
-	if !resp.frozen {
-		resp.frozen = true
-		resp.Request.Freeze()
-		resp.ACLs.Freeze()
-		resp.Scores.Freeze()
-	}
-}
-
-func (resp *Response) Truth() starlark.Bool {
-	return starlark.True
-}
-
-func (resp *Response) Hash() (uint32, error) {
-	return 0, errors.New("unhashable type: Response")
-}
-
-var responseAttrNames = []string{"request", "header", "acls", "scores", "status", "body", "thumbnail", "action", "possible_actions"}
-
-func (resp *Response) AttrNames() []string {
-	return responseAttrNames
-}
-
-func (resp *Response) Attr(name string) (starlark.Value, error) {
-	switch name {
-	case "request":
-		return resp.Request, nil
-	case "acls":
-		return &resp.ACLs, nil
-	case "scores":
-		return &resp.Scores, nil
-	case "status":
-		return starlark.MakeInt(resp.Response.StatusCode), nil
-	case "body":
-		content, err := resp.Content(getConfig().MaxContentScanSize)
-		if err != nil {
-			return starlark.None, err
-		}
-		if content == nil {
-			return starlark.None, nil
-		}
-		return starlark.String(content), nil
-	case "action":
-		ar, _ := resp.currentAction()
-		return starlark.String(ar.Action), nil
-	case "possible_actions":
-		return stringTuple(resp.PossibleActions), nil
-	case "header":
-		return &HeaderDict{data: resp.Response.Header}, nil
-
-	case "thumbnail":
-		return starlark.NewBuiltin("thumbnail", responseGetThumbnail).BindReceiver(resp), nil
-
-	default:
-		return nil, nil
-	}
-}
-
-func (resp *Response) SetField(name string, val starlark.Value) error {
-	if resp.frozen {
-		return errors.New("can't set a field of a frozen object")
-	}
-
-	switch name {
-	case "status":
-		status, err := starlark.NumberToInt(val)
-		if err != nil {
-			return err
-		}
-		status64, ok := status.Int64()
-		if !ok || status64 >= 600 || status64 < 100 {
-			return fmt.Errorf("invalid HTTP status code: %v", val)
-		}
-		resp.Response.StatusCode = int(status64)
-		return nil
-	case "body":
-		var body string
-		err := assignStarlarkString(&body, val)
-		if err != nil {
-			return err
-		}
-		resp.SetContent([]byte(body), resp.Response.Header.Get("Content-Type"))
-		return nil
-	case "action":
-		var newAction string
-		if err := assignStarlarkString(&newAction, val); err != nil {
-			return err
-		}
-		return resp.setAction(newAction)
-	default:
-		return starlark.NoSuchAttrError(fmt.Sprintf("can't assign to .%s field of Response", name))
-	}
+func (resp *Response) Body() ([]byte, error) {
+	return resp.Content(getConfig().MaxContentScanSize)
 }
 
 // Content reads the response body and returns it as a byte slice.
@@ -1168,347 +976,4 @@ func (resp *Response) SetContent(data []byte, contentType string) {
 
 	resp.Response.ContentLength = int64(len(data))
 	resp.Response.Body = io.NopCloser(bytes.NewReader(data))
-}
-
-func responseGetThumbnail(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	s := fn.Receiver().(*Response)
-	if s.frozen && s.image == nil {
-		return nil, errors.New("can't get a thumbnail for a frozen Response unless the image is already loaded")
-	}
-
-	size := 1000
-	if err := starlark.UnpackPositionalArgs(fn.Name(), args, kwargs, 0, &size); err != nil {
-		return nil, err
-	}
-
-	thumbnail := s.Thumbnail(size)
-	if thumbnail == nil {
-		return starlark.None, nil
-	}
-
-	return starlark.String(thumbnail), nil
-}
-
-// A HeaderDict wraps an http.Header to make it act like a Starlark dictionary.
-type HeaderDict struct {
-	frozen    bool
-	itercount int
-	data      http.Header
-}
-
-func (h *HeaderDict) String() string {
-	b := new(strings.Builder)
-	err := h.data.Write(b)
-	if err != nil {
-		logVerbose("debug", "unable to write to headerDict: %s", err)
-	}
-	return b.String()
-}
-
-func (h *HeaderDict) Type() string {
-	return "HeaderDict"
-}
-
-func (h *HeaderDict) Freeze() {
-	if !h.frozen {
-		h.frozen = true
-	}
-}
-
-func (h *HeaderDict) Truth() starlark.Bool {
-	return len(h.data) > 0
-}
-
-func (h *HeaderDict) Hash() (uint32, error) {
-	return 0, errors.New("unhashable type: HeaderDict")
-}
-
-type headerDictIterator struct {
-	ss       *HeaderDict
-	elements []string
-}
-
-func (it *headerDictIterator) Next(p *starlark.Value) bool {
-	if len(it.elements) > 0 {
-		*p = starlark.String(it.elements[0])
-		it.elements = it.elements[1:]
-		return true
-	}
-	return false
-}
-
-func (it *headerDictIterator) Done() {
-	if !it.ss.frozen {
-		it.ss.itercount--
-	}
-}
-
-func (h *HeaderDict) keys() []string {
-	keys := make([]string, 0, len(h.data))
-	for k := range h.data {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-func (h *HeaderDict) Iterate() starlark.Iterator {
-	if !h.frozen {
-		h.itercount++
-	}
-	return &headerDictIterator{
-		ss:       h,
-		elements: h.keys(),
-	}
-}
-
-func (h *HeaderDict) Len() int {
-	return len(h.data)
-}
-
-func (h *HeaderDict) Get(k starlark.Value) (v starlark.Value, found bool, err error) {
-	ks, ok := k.(starlark.String)
-	if !ok {
-		return nil, false, nil
-	}
-
-	vals := h.data.Values(string(ks))
-	if len(vals) == 0 {
-		return nil, false, nil
-	}
-	return starlark.String(vals[0]), true, nil
-}
-
-func (h *HeaderDict) SetKey(k, v starlark.Value) error {
-	ks, ok := k.(starlark.String)
-	if !ok {
-		return fmt.Errorf("keys for HeaderDict must be String, not %s", k.Type())
-	}
-	vs, ok := v.(starlark.String)
-	if !ok {
-		return fmt.Errorf("values for HeaderDict must be String, not %s", v.Type())
-	}
-	h.data.Set(string(ks), string(vs))
-	return nil
-}
-
-var headerDictAttrNames = []string{"get", "pop"}
-
-func (h *HeaderDict) AttrNames() []string {
-	return headerDictAttrNames
-}
-
-func (h *HeaderDict) Attr(name string) (starlark.Value, error) {
-	switch name {
-	case "get", "pop":
-		return starlark.NewBuiltin(name, headerDictGet).BindReceiver(h), nil
-	default:
-		return nil, nil
-	}
-}
-
-func headerDictGet(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	pop := fn.Name() == "pop"
-
-	s := fn.Receiver().(*HeaderDict)
-	if pop {
-		if s.frozen {
-			return nil, errors.New("can't modify a frozen HeaderDict")
-		}
-		if s.itercount > 0 {
-			return nil, errors.New("can't modify a HeaderDict during iteration")
-		}
-	}
-
-	var key string
-	var defaultValue starlark.Value
-	if err := starlark.UnpackPositionalArgs(fn.Name(), args, kwargs, 1, &key, &defaultValue); err != nil {
-		return nil, err
-	}
-	if defaultValue == nil && !pop {
-		defaultValue = starlark.None
-	}
-
-	vals := s.data.Values(key)
-	if len(vals) == 0 {
-		if defaultValue != nil {
-			return defaultValue, nil
-		}
-		return nil, fmt.Errorf("key %q not in dict", key)
-	}
-	if pop {
-		s.data.Del(key)
-	}
-	return starlark.String(vals[0]), nil
-}
-
-func (h *HeaderDict) Items() (result []starlark.Tuple) {
-	for _, k := range h.keys() {
-		result = append(result, starlark.Tuple{
-			starlark.String(k),
-			starlark.String(h.data.Get(k)),
-		})
-	}
-	return result
-}
-
-// A QueryDict wraps url.Values to make it act like a Starlark dictionary.
-type QueryDict struct {
-	frozen    bool
-	itercount int
-	data      url.Values
-	rawQuery  *string
-}
-
-func (h *QueryDict) String() string {
-	return h.data.Encode()
-}
-
-func (h *QueryDict) Type() string {
-	return "QueryDict"
-}
-
-func (h *QueryDict) Freeze() {
-	if !h.frozen {
-		h.frozen = true
-	}
-}
-
-func (h *QueryDict) Truth() starlark.Bool {
-	return len(h.data) > 0
-}
-
-func (h *QueryDict) Hash() (uint32, error) {
-	return 0, errors.New("unhashable type: QueryDict")
-}
-
-type queryDictIterator struct {
-	ss       *QueryDict
-	elements []string
-}
-
-func (it *queryDictIterator) Next(p *starlark.Value) bool {
-	if len(it.elements) > 0 {
-		*p = starlark.String(it.elements[0])
-		it.elements = it.elements[1:]
-		return true
-	}
-	return false
-}
-
-func (it *queryDictIterator) Done() {
-	if !it.ss.frozen {
-		it.ss.itercount--
-	}
-}
-
-func (h *QueryDict) keys() []string {
-	keys := make([]string, 0, len(h.data))
-	for k := range h.data {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-func (h *QueryDict) Iterate() starlark.Iterator {
-	if !h.frozen {
-		h.itercount++
-	}
-	return &queryDictIterator{
-		ss:       h,
-		elements: h.keys(),
-	}
-}
-
-func (h *QueryDict) Len() int {
-	return len(h.data)
-}
-
-func (h *QueryDict) Get(k starlark.Value) (v starlark.Value, found bool, err error) {
-	ks, ok := k.(starlark.String)
-	if !ok {
-		return nil, false, nil
-	}
-
-	vals := h.data[string(ks)]
-	if len(vals) == 0 {
-		return nil, false, nil
-	}
-	return starlark.String(vals[0]), true, nil
-}
-
-func (h *QueryDict) SetKey(k, v starlark.Value) error {
-	ks, ok := k.(starlark.String)
-	if !ok {
-		return fmt.Errorf("keys for QueryDict must be String, not %s", k.Type())
-	}
-	vs, ok := v.(starlark.String)
-	if !ok {
-		return fmt.Errorf("values for QueryDict must be String, not %s", v.Type())
-	}
-	h.data.Set(string(ks), string(vs))
-	*h.rawQuery = h.data.Encode()
-	return nil
-}
-
-var queryDictAttrNames = []string{"get", "pop"}
-
-func (h *QueryDict) AttrNames() []string {
-	return queryDictAttrNames
-}
-
-func (h *QueryDict) Attr(name string) (starlark.Value, error) {
-	switch name {
-	case "get", "pop":
-		return starlark.NewBuiltin(name, queryDictGet).BindReceiver(h), nil
-	default:
-		return nil, nil
-	}
-}
-
-func queryDictGet(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	pop := fn.Name() == "pop"
-
-	s := fn.Receiver().(*QueryDict)
-	if pop {
-		if s.frozen {
-			return nil, errors.New("can't modify a frozen QueryDict")
-		}
-		if s.itercount > 0 {
-			return nil, errors.New("can't modify a QueryDict during iteration")
-		}
-	}
-
-	var key string
-	var defaultValue starlark.Value
-	if err := starlark.UnpackPositionalArgs(fn.Name(), args, kwargs, 1, &key, &defaultValue); err != nil {
-		return nil, err
-	}
-	if defaultValue == nil && !pop {
-		defaultValue = starlark.None
-	}
-
-	vals := s.data[key]
-	if len(vals) == 0 {
-		if defaultValue != nil {
-			return defaultValue, nil
-		}
-		return nil, fmt.Errorf("key %q not in dict", key)
-	}
-	if pop {
-		s.data.Del(key)
-		*s.rawQuery = s.data.Encode()
-	}
-	return starlark.String(vals[0]), nil
-}
-
-func (h *QueryDict) Items() (result []starlark.Tuple) {
-	for _, k := range h.keys() {
-		result = append(result, starlark.Tuple{
-			starlark.String(k),
-			starlark.String(h.data.Get(k)),
-		})
-	}
-	return result
 }

@@ -7,9 +7,9 @@ import (
 )
 
 type Scripting interface {
-	SSLBump(session *TLSSession) *TLSSession
-	FilterRequest(request *Request) *Request
-	FilterResponse(response *Response) *Response
+	SSLBump(session **TLSSession) error
+	FilterRequest(request **Request) error
+	FilterResponse(response **Response) error
 	Hosts() []string
 	Name() string
 	Description() string
@@ -18,28 +18,28 @@ type Scripting interface {
 // Script blank simple script
 type Script struct{ Scripting }
 
-func (Script) SSLBump(session *TLSSession) *TLSSession     { return session }
-func (Script) FilterRequest(request *Request) *Request     { return request }
-func (Script) FilterResponse(response *Response) *Response { return response }
-func (Script) Hosts() []string                             { return []string{} }
-func (Script) Name() string                                { return "Default" }
-func (Script) Description() string                         { return "Default" }
+func (Script) SSLBump(**TLSSession) error      { return nil }
+func (Script) FilterRequest(**Request) error   { return nil }
+func (Script) FilterResponse(**Response) error { return nil }
+func (Script) Hosts() []string                 { return []string{} }
+func (Script) Name() string                    { return "Default" }
+func (Script) Description() string             { return "Default" }
 
 // ScriptHandler a blank example script handler
 type ScriptHandler struct{ Scripting }
 
-func (ScriptHandler) SSLBump(session *TLSSession) *TLSSession     { return session }
-func (ScriptHandler) FilterRequest(request *Request) *Request     { return request }
-func (ScriptHandler) FilterResponse(response *Response) *Response { return response }
-func (ScriptHandler) Hosts() []string                             { return []string{} }
-func (ScriptHandler) Name() string                                { return "Default" }
-func (ScriptHandler) Description() string                         { return "Default" }
+func (ScriptHandler) SSLBump(**TLSSession) error      { return nil }
+func (ScriptHandler) FilterRequest(**Request) error   { return nil }
+func (ScriptHandler) FilterResponse(**Response) error { return nil }
+func (ScriptHandler) Hosts() []string                 { return []string{} }
+func (ScriptHandler) Name() string                    { return "Default" }
+func (ScriptHandler) Description() string             { return "Default" }
 
 var Scripts = []Scripting{
-	ExampleScript{},
+	ClassLink{},
 }
 var ScriptHandlers = []Scripting{
-	ExampleHandler{},
+	ScriptHandler{},
 }
 
 type ScriptingHandler ScriptHandler
@@ -56,22 +56,34 @@ func CheckScripts() {
 	log.Print("All Script Handlers Have Passed")
 }
 
-func (h ScriptingHandler) SSLBump(session *TLSSession) *TLSSession {
+func (h ScriptingHandler) SSLBump(session **TLSSession) error {
+	var s = **session
 	// Find the first Script able to process host
-	var sec = h.SelectScript(session.SNI)
+	var sec = h.SelectScript(s.SNI)
 	// run script
-	session = sec.SSLBump(session)
+	sec.SSLBump(session)
 	for _, handler := range h.SelectHandlers() {
-		session = handler.SSLBump(session)
+		handler.SSLBump(session)
 	}
-	return session
 }
 
-func (h ScriptingHandler) FilterRequest(request *Request) *Request {
-	return request
+func (h ScriptingHandler) FilterRequest(request **Request) {
+	var r = *request
+	// find script to process host
+	h.SelectScript(r.Request.Host).FilterRequest(request)
+	// run other handlers
+	for _, handler := range h.SelectHandlers() {
+		handler.FilterRequest(request)
+	}
 }
-func (h ScriptingHandler) FilterResponse(response *Response) *Response {
-	return response
+func (h ScriptingHandler) FilterResponse(response **Response) {
+	var r = *response
+	// find script to process host
+	h.SelectScript(r.Request.Request.Host).FilterResponse(response)
+	// run other handlers
+	for _, handler := range h.SelectHandlers() {
+		handler.FilterResponse(response)
+	}
 }
 func (h ScriptingHandler) Hosts() []string {
 	return []string{}
@@ -105,6 +117,7 @@ func (h ScriptingHandler) SelectHandlers() []Scripting {
 
 func (h ScriptingHandler) SelectScript(host string) Scripting {
 	var setS stringSet = getConfig().EnabledScripts
+	//log.Println("Select Script: enabled scripts", setS)
 	for _, script := range Scripts {
 		if !setS.contains(script.Name()) {
 			continue

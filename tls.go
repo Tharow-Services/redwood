@@ -234,9 +234,13 @@ func SSLBump(conn net.Conn, serverAddr, user, authUser string, r *http.Request) 
 	}
 
 	callStarlarkFunctions("ssl_bump", session)
-
-	session = getConfig().RootScriptHandler.SSLBump(session)
-
+	if session != nil {
+		var s = *session
+		err := getConfig().RootScriptHandler.SSLBump(&s)
+		if err != nil {
+			log.Printf("script an contered an error: %s", err)
+		}
+	}
 	dialer := &net.Dialer{
 		Timeout:   30 * time.Second,
 		KeepAlive: 30 * time.Second,
