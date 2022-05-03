@@ -10,7 +10,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/andybalholm/redwood/efs"
+	"github.com/tharow-services/redwood/efs"
 	"html/template"
 	"io"
 	"log"
@@ -117,7 +117,6 @@ type config struct {
 	GZIPLevel   int
 	BrotliLevel int
 
-	RootScriptHandler     ScriptingHandler
 	EnabledScripts        []string
 	EnabledScriptHandlers []string
 
@@ -260,8 +259,6 @@ func loadConfiguration() (*config, error) {
 	c.FilteredPruneMatcher.publicSuffixes = c.PublicSuffixes
 
 	c.loadStarlarkScripts()
-	CheckScripts()
-
 	return c, nil
 }
 

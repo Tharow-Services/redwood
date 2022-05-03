@@ -2,30 +2,15 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 )
 
 // ClassLink site fixer
-type ClassLink Script
+type ClassLink struct{}
 
-func (c ClassLink) Hosts() []string     { return []string{"nodeapi.classlink.com", "myapps.classlink.io"} }
-func (c ClassLink) Name() string        { return "classlink" }
-func (c ClassLink) Description() string { return "classlink.com fixer" }
-func (c ClassLink) FilterResponse(response **Response) {
-	var r = *response
-	if r.Request.Request.Method == "GET" {
-		switch r.Request.Request.Host {
-		case "nodeapi.classlink.com":
-			c.NodeAPI(response)
-		case "myapps.classlink.io":
-			c.MyApps(response)
-		}
-	}
-}
-
-func (c ClassLink) NodeAPI(response **Response) {
-	var r = *response
-	r.Modified = true
+func (c ClassLink) NodeAPI(response *Response) {
+	response.Modified = true
 }
 
 type str string
@@ -109,49 +94,49 @@ type ClasslinkSettings struct {
 	}
 }
 
-func (c ClassLink) MyApps(response **Response) {
-	var r = *response
-	switch r.Request.Request.URL.Path {
+func (c ClassLink) MyApps(response *Response) error {
+	switch response.Request.Request.URL.Path {
 	case "/settings/v1p0/myClassesEnabled":
 		{
-			b, err := r.Body()
+			b, err := response.Body()
 			if err != nil {
-				return
+				return err
 			}
 			var body = myClassesEnabled{}
 			err = json.Unmarshal(b, &body)
 			if err != nil {
-				return
+				return fmt.Errorf("unmarshal error: %s", err)
 			}
 			log.Print(body.data.myClassesEnabled)
 			b2, err := json.Marshal(body)
 			if err != nil {
-				return
+				return err
 			}
-			r.SetContent(b2, "application/json")
+			response.SetContent(b2, "application/json")
 		}
 	case "/settings/v1p0/settings":
 		{
-			rawBody, err := r.Body()
+			rawBody, err := response.Body()
 			if err != nil {
 				log.Printf("classlink script unable to load body: %s", err)
-				return
+				return err
 			}
 			var body = ClasslinkSettings{}
 			err = json.Unmarshal(rawBody, &body)
 			if err != nil {
 				log.Printf("classlink script user settings unable to convert to settings object: %s", err)
-				return
+				return err
 			}
 			body.data.tenantSettings.customText = "Tharow"
 			bodyOut, err := json.Marshal(body)
 			if err != nil {
 				log.Printf("classlink script user settings unable to Marshal json")
-				return
+				return err
 			}
-			r.SetContent(bodyOut, "application/json")
+			response.SetContent(bodyOut, "application/json")
 		}
 
 	}
-	r.Modified = true
+	response.Modified = true
+	return nil
 }

@@ -12,7 +12,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"github.com/andybalholm/redwood/efs"
+	"github.com/tharow-services/redwood/efs"
 	"io"
 	"io/ioutil"
 	"log"
@@ -234,13 +234,8 @@ func SSLBump(conn net.Conn, serverAddr, user, authUser string, r *http.Request) 
 	}
 
 	callStarlarkFunctions("ssl_bump", session)
-	if session != nil {
-		var s = *session
-		err := getConfig().RootScriptHandler.SSLBump(&s)
-		if err != nil {
-			log.Printf("script an contered an error: %s", err)
-		}
-	}
+	sslBump(session)
+
 	dialer := &net.Dialer{
 		Timeout:   30 * time.Second,
 		KeepAlive: 30 * time.Second,
@@ -262,7 +257,7 @@ func SSLBump(conn net.Conn, serverAddr, user, authUser string, r *http.Request) 
 		logAccess(cr, nil, upload+download, false, user, tally, scores, session.Action, "", session.Ignored)
 		return
 	case "block":
-		conn.Close()
+		Lce(conn.Close())
 		return
 	}
 
@@ -299,7 +294,10 @@ func SSLBump(conn net.Conn, serverAddr, user, authUser string, r *http.Request) 
 
 	serverConn, err := tls.DialWithDialer(dialer, "tcp", session.ServerAddr, serverConnConfig)
 	if err == nil {
-		defer serverConn.Close()
+		defer func(serverConn *tls.Conn) {
+			err := serverConn.Close()
+			Lce(err)
+		}(serverConn)
 		state := serverConn.ConnectionState()
 		serverCert := state.PeerCertificates[0]
 

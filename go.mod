@@ -1,4 +1,4 @@
-module github.com/andybalholm/redwood
+module github.com/tharow-services/redwood
 
 require (
 	github.com/andybalholm/brotli v1.0.4

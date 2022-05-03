@@ -427,7 +427,7 @@ func (h proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	response.PossibleActions = []string{"allow", "block", "block-invisible"}
 
-	getConfig().RootScriptHandler.FilterResponse(&response)
+	filterResponse(response)
 
 	response.chooseAction()
 
@@ -498,8 +498,7 @@ func filterRequest(req *Request, checkAuth bool) {
 	if req.User == "" && checkAuth {
 		req.PossibleActions = append(req.PossibleActions, "require-auth")
 	}
-
-	getConfig().RootScriptHandler.FilterRequest(&req)
+	FilterRequest(req)
 
 	req.chooseAction()
 }
@@ -855,6 +854,10 @@ type Response struct {
 	image image.Image
 
 	frozen bool
+}
+
+func (resp *Response) Host() string {
+	return resp.Request.Request.Host
 }
 
 func (resp *Response) Headers() *http.Header {
