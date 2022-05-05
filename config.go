@@ -117,8 +117,7 @@ type config struct {
 	GZIPLevel   int
 	BrotliLevel int
 
-	EnabledScripts        []string
-	EnabledScriptHandlers []string
+	ClassLinkSettingsFile string
 
 	StarlarkScripts   []string
 	StarlarkFunctions map[string][]starlarkFunction
@@ -207,9 +206,6 @@ func loadConfiguration() (*config, error) {
 	c.stringListFlag("external-classifier", "", "HTTP API endpoint to check URLs against", &c.ExternalClassifiers)
 
 	c.stringListFlag("starlark-script", "", "Starlark script to load", &c.StarlarkScripts)
-	c.stringListFlag("script", "", "Script to load", &c.EnabledScripts)
-	c.stringListFlag("script-handler", "", "Script Handler to load", &c.EnabledScriptHandlers)
-
 	c.newActiveFlag("virtual-host", "", "a hostname substitution to apply to HTTP requests (e.g. -virtual-host me.local localhost)", func(val string) error {
 		f := strings.Fields(val)
 		if len(f) != 2 {

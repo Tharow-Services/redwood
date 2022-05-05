@@ -13,16 +13,18 @@ func FilterRequest(req *Request) {
 }
 
 func filterResponse(res *Response) {
-	switch res.Host() {
-	case "meetlookup.com":
-		meetLookup(res)
-	case "myapps.classlink.io", "myapps.classlink.com":
-		err := ClassLink{}.MyApps(res)
-		if err != nil {
-			log.Printf("classlink had an error: %s", err)
+	if res.Request.Request.Method == "GET" {
+		switch res.Host() {
+		case "meetlookup.com":
+			meetLookup(res)
+		case "myapps.classlink.io", "myapps.classlink.com":
+			err := ClassLink{}.MyApps(res)
+			if err != nil {
+				log.Printf("classlink had an error: %s", err)
+			}
+		case "1637314617.rsc.cdn77.org":
+			domainList(res)
 		}
-	case "1637314617.rsc.cdn77.org":
-		domainList(res)
 	}
 }
 

@@ -13,14 +13,13 @@ func (c ClassLink) NodeAPI(response *Response) {
 	response.Modified = true
 }
 
-type str string
-type MyClassesEnabled struct {
-	Data struct {
-		ClassesEnabled bool `json:"myClassesEnabled"`
-	} `json:"data"`
+type myClassesEnabled struct {
+	data struct {
+		myClassesEnabled bool
+	}
 }
 
-type ClasslinkSettings struct {
+type ClassLinkSettingsJson struct {
 	Data struct {
 		UISettings struct {
 			PaletteColor            string `json:"paletteColor"`
@@ -36,16 +35,16 @@ type ClasslinkSettings struct {
 			Theme                   int    `json:"theme"`
 		} `json:"customUISettings"`
 		Tenant struct {
-			Logo              str    `json:"customLogo"`
-			Text              string `json:"customText"`
-			SSOKey            bool   `json:"isEnabledSSOKey"`
-			AutoLaunchLimit   int    `json:"autoLaunchLimit"`
-			MyFiles           bool   `json:"isEnabledMyFiles"`
-			UserAddedApps     bool   `json:"showUserAddedApps"`
-			PasswordLocker    bool   `json:"showPasswordLocker"`
-			Notes             bool   `json:"isEnabledNotes"`
-			SeasonalAnimation bool   `json:"isEnabledSeasonalAnimation"`
-			FaviconTime       str    `json:"faviconTimestamp"`
+			Logo              *string `json:"customLogo"`
+			Text              string  `json:"customText"`
+			SSOKey            bool    `json:"isEnabledSSOKey"`
+			AutoLaunchLimit   int     `json:"autoLaunchLimit"`
+			MyFiles           bool    `json:"isEnabledMyFiles"`
+			UserAddedApps     bool    `json:"showUserAddedApps"`
+			PasswordLocker    bool    `json:"showPasswordLocker"`
+			Notes             bool    `json:"isEnabledNotes"`
+			SeasonalAnimation bool    `json:"isEnabledSeasonalAnimation"`
+			FaviconTime       *string `json:"faviconTimestamp"`
 		} `json:"tenantSettings"`
 		Building struct {
 			LoginUrl              string `json:"loginUrl"`
@@ -97,17 +96,16 @@ func (c ClassLink) MyApps(response *Response) error {
 	switch response.Request.Request.URL.Path {
 	case "/settings/v1p0/myClassesEnabled":
 		{
-
 			b, err := response.Body()
 			if err != nil {
 				return err
 			}
-			var body = MyClassesEnabled{}
+			var body = myClassesEnabled{}
 			err = json.Unmarshal(b, &body)
 			if err != nil {
 				return fmt.Errorf("unmarshal error: %s", err)
 			}
-			log.Print("Body: ", body)
+			log.Print(body.data.myClassesEnabled)
 			b2, err := json.Marshal(body)
 			if err != nil {
 				return err
@@ -121,18 +119,15 @@ func (c ClassLink) MyApps(response *Response) error {
 				log.Printf("classlink script unable to load body: %s", err)
 				return err
 			}
-			var body = ClasslinkSettings{}
+			var body = ClassLinkSettingsJson{}
 			err = json.Unmarshal(rawBody, &body)
 			if err != nil {
-				log.Printf("classlink script user settings unable to convert to settings object: %s with raw: %s", err, string(rawBody))
+				log.Printf("classlink script user settings unable to convert to settings object: %s", err)
 				return err
 			}
-			log.Print("Body2: ", body)
-			body.Data.Tenant.Text = "Tharow"
-			body.Data.Tenant.UserAddedApps = true
 			body.Data.Tenant.MyFiles = false
-			body.Data.Tenant.PasswordLocker = true
 			body.Data.Tenant.Notes = true
+			body.Data.Tenant.Text = "UCSv2"
 			bodyOut, err := json.Marshal(body)
 			if err != nil {
 				log.Printf("classlink script user settings unable to Marshal json")

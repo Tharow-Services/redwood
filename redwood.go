@@ -19,7 +19,7 @@ import (
 var Version string
 
 func main() {
-	if Version != "" {
+	if Version == "" {
 		Version = "Version Unknown"
 	}
 	log.Println("Redwood", Version)

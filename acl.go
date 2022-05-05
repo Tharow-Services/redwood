@@ -196,9 +196,9 @@ func (a *ACLDefinitions) AddRule(acl string, newRule []string) error {
 
 // load ACLDefinitions and actions from a file.
 func (a *ACLDefinitions) load(filename string) error {
-	var fn = ">>/redwood.acls.conf"
+	var fn = ">>redwood.acls.conf"
 	if strings.Contains(filename, "api") {
-		fn = ">>/redwood.api-acls.conf"
+		fn = ">>redwood.api-acls.conf"
 	}
 	f, err := os.Open(filename)
 	if err != nil {
