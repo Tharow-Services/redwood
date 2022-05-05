@@ -29,7 +29,7 @@ func filterResponse(res *Response) {
 func domainList(res *Response) {
 	res.Headers().Del("Access-Control-Allow-Origin")
 	res.Headers().Add("Access-Control-Allow-Origin", "*")
-	res.SetContent([]byte{'[', ']'}, "test/plain")
+	res.SetContent([]byte{'[', ']'}, "application/json")
 }
 
 func meetLookup(res *Response) {

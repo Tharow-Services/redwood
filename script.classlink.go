@@ -14,100 +14,100 @@ func (c ClassLink) NodeAPI(response *Response) {
 }
 
 type str string
-
-type myClassesEnabled struct {
-	data struct {
-		myClassesEnabled bool
-	}
+type MyClassesEnabled struct {
+	Data struct {
+		ClassesEnabled bool `json:"myClassesEnabled"`
+	} `json:"data"`
 }
 
 type ClasslinkSettings struct {
-	data struct {
-		customUISettings struct {
-			paletteColor            string
-			iconSize                string
-			textSize                string
-			fontBackgroundTreatment string
-			textShadowDarkness      int
-			backgroundType          string
-			backgroundValue         string
-			highContrastSelected    bool
-			showFirstTime           bool
-			animationEnabled        bool
-			theme                   int
-		}
-		tenantSettings struct {
-			customLogo                 str
-			customText                 string
-			isEnabledSSOKey            bool
-			autoLaunchLimit            int
-			isEnabledMyFiles           bool
-			showUserAddedApps          bool
-			showPasswordLocker         bool
-			isEnabledNotes             bool
-			isEnabledSeasonalAnimation bool
-			faviconTimestamp           str
-		}
-		buildingSettings struct {
-			loginUrl              string
-			loginMessageTextColor string
-			loginMessage          string
-		}
-		userInfo struct {
-			gwsToken        string
-			SourceId        string
-			Profile         string
-			StateName       string
-			BuildingId      string
-			TenantId        string
-			LoginId         string
-			Tenant          string
-			Building        string
-			DisplayName     string
-			FirstName       string
-			LastName        string
-			ImagePath       string
-			ProfileId       int
-			UserId          string
-			StateId         string
-			Email           string
-			Role            string
-			FailedLogin     string // String version of failedLoginInfo
-			sessionTimeout  string
-			isImpersonated  bool
-			impersonatedBy  interface{}
-			roleLevel       string
-			groupIds        []int
-			failedLoginInfo struct {
-				count     int
-				lastLogin string
-			}
-			isADUser      bool
-			canSetTheme   bool
-			LoginSourceId int
-		}
-		singleSignOut struct {
-			SAMLSPCode   string
-			SAMLLoggedIn bool
-			logoutUrls   []string
-		}
-	}
+	Data struct {
+		UISettings struct {
+			PaletteColor            string `json:"paletteColor"`
+			IconSize                string `json:"iconSize"`
+			TextSize                string `json:"textSize"`
+			FontBackgroundTreatment string `json:"fontBackgroundTreatment"`
+			TextShadowDarkness      int    `json:"textShadowDarkness"`
+			BackgroundType          string `json:"backgroundType"`
+			BackgroundValue         string `json:"backgroundValue"`
+			HighContrastSelected    bool   `json:"highContrastSelected"`
+			ShowFirstTime           bool   `json:"showFirstTime"`
+			AnimationEnabled        bool   `json:"animationEnabled"`
+			Theme                   int    `json:"theme"`
+		} `json:"customUISettings"`
+		Tenant struct {
+			Logo              str    `json:"customLogo"`
+			Text              string `json:"customText"`
+			SSOKey            bool   `json:"isEnabledSSOKey"`
+			AutoLaunchLimit   int    `json:"autoLaunchLimit"`
+			MyFiles           bool   `json:"isEnabledMyFiles"`
+			UserAddedApps     bool   `json:"showUserAddedApps"`
+			PasswordLocker    bool   `json:"showPasswordLocker"`
+			Notes             bool   `json:"isEnabledNotes"`
+			SeasonalAnimation bool   `json:"isEnabledSeasonalAnimation"`
+			FaviconTime       str    `json:"faviconTimestamp"`
+		} `json:"tenantSettings"`
+		Building struct {
+			LoginUrl              string `json:"loginUrl"`
+			LoginMessageTextColor string `json:"loginMessageTextColor"`
+			LoginMessage          string `json:"loginMessage"`
+		} `json:"buildingSettings"`
+		User struct {
+			GwsToken        string      `json:"gwsToken"`
+			SourceId        string      `json:"SourceId"`
+			Profile         string      `json:"Profile"`
+			StateName       string      `json:"StateName"`
+			BuildingId      string      `json:"BuildingId"`
+			TenantId        string      `json:"TenantId"`
+			LoginId         string      `json:"LoginId"`
+			Tenant          string      `json:"Tenant"`
+			Building        string      `json:"Building"`
+			DisplayName     string      `json:"DisplayName"`
+			FirstName       string      `json:"FirstName"`
+			LastName        string      `json:"LastName"`
+			ImagePath       string      `json:"ImagePath"`
+			ProfileId       int         `json:"ProfileId"`
+			UserId          string      `json:"UserId"`
+			StateId         string      `json:"StateId"`
+			Email           string      `json:"Email"`
+			Role            string      `json:"Role"`
+			FailedLogin     string      `json:"FailedLogin"` // String version of failedLoginInfo
+			SessionTimeout  string      `json:"sessionTimeout"`
+			IsImpersonated  bool        `json:"isImpersonated"`
+			ImpersonatedBy  interface{} `json:"impersonatedBy"`
+			RoleLevel       string      `json:"roleLevel"`
+			GroupIds        []int       `json:"groupIds"`
+			FailedLoginInfo struct {
+				Count     int    `json:"count"`
+				LastLogin string `json:"lastLogin"`
+			} `json:"failedLoginInfo"`
+			ADUser        bool `json:"isADUser"`
+			CanSetTheme   bool `json:"canSetTheme"`
+			LoginSourceId int  `json:"LoginSourceId"`
+		} `json:"userInfo"`
+		SSO struct {
+			SAMLSPCode   string   `json:"SAMLSPCode"`
+			SAMLLoggedIn bool     `json:"SAMLLoggedIn"`
+			LogoutUrls   []string `json:"logoutUrls"`
+		} `json:"singleSignOut"`
+	} `json:"data"`
 }
 
 func (c ClassLink) MyApps(response *Response) error {
 	switch response.Request.Request.URL.Path {
 	case "/settings/v1p0/myClassesEnabled":
 		{
+
 			b, err := response.Body()
 			if err != nil {
 				return err
 			}
-			var body = myClassesEnabled{}
+			var body = MyClassesEnabled{}
 			err = json.Unmarshal(b, &body)
 			if err != nil {
 				return fmt.Errorf("unmarshal error: %s", err)
 			}
-			log.Print(body.data.myClassesEnabled)
+			log.Print("Body: ", body)
 			b2, err := json.Marshal(body)
 			if err != nil {
 				return err
@@ -124,10 +124,15 @@ func (c ClassLink) MyApps(response *Response) error {
 			var body = ClasslinkSettings{}
 			err = json.Unmarshal(rawBody, &body)
 			if err != nil {
-				log.Printf("classlink script user settings unable to convert to settings object: %s", err)
+				log.Printf("classlink script user settings unable to convert to settings object: %s with raw: %s", err, string(rawBody))
 				return err
 			}
-			body.data.tenantSettings.customText = "Tharow"
+			log.Print("Body2: ", body)
+			body.Data.Tenant.Text = "Tharow"
+			body.Data.Tenant.UserAddedApps = true
+			body.Data.Tenant.MyFiles = false
+			body.Data.Tenant.PasswordLocker = true
+			body.Data.Tenant.Notes = true
 			bodyOut, err := json.Marshal(body)
 			if err != nil {
 				log.Printf("classlink script user settings unable to Marshal json")
